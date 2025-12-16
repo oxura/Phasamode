@@ -27,7 +27,7 @@ interface Chat {
   avatar: string | null;
   description: string | null;
   members: User[];
-  last_message: { id: string; content: string; created_at: string; sender_id: string } | null;
+  last_message: { id: string; content: string; created_at: string; sender_id: string; message_type?: string } | null;
 }
 
 type ChatTab = 'all' | 'groups' | 'contacts';
@@ -89,6 +89,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
                   content: newMsg.content,
                   created_at: newMsg.created_at,
                   sender_id: newMsg.sender_id,
+                  message_type: newMsg.message_type,
                 },
               };
             }

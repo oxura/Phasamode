@@ -4,6 +4,7 @@ import { useMessenger } from '@/context/MessengerContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface MessageBubbleProps {
@@ -22,6 +23,24 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
   const senderName = message.sender?.username || 'Unknown';
   const senderAvatar = message.sender?.avatar;
 
+  const renderContent = () => {
+    if (message.message_type === 'image') {
+      return (
+        <div className="rounded-xl overflow-hidden max-w-[280px]">
+          <img src={message.content} alt="Shared image" className="w-full h-auto object-cover" />
+        </div>
+      );
+    }
+    if (message.message_type === 'audio') {
+      return (
+        <div className="flex items-center gap-3 min-w-[200px]">
+          <audio src={message.content} controls className="w-full h-8" />
+        </div>
+      );
+    }
+    return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>;
+  };
+
   if (isOwn) {
     return (
       <div className="flex justify-end mb-4 animate-in slide-in-from-right-5 duration-300">
@@ -32,7 +51,7 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
               <span className="text-[11px] text-white font-medium">{senderName}</span>
             </div>
             <div className="bg-gradient-to-b from-primary to-primary/80 text-white rounded-2xl rounded-br-sm px-4 py-2.5 shadow-lg shadow-black/20">
-              <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+              {renderContent()}
             </div>
           </div>
           <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-br from-pink-400 to-pink-600 flex items-center justify-center">
@@ -63,7 +82,7 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
             <span className="text-[11px] text-[#6b7280]">{time}</span>
           </div>
           <div className="bg-white/8 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 backdrop-blur-md">
-            <p className="text-sm text-white whitespace-pre-wrap break-words">{message.content}</p>
+            {renderContent()}
           </div>
         </div>
       </div>
@@ -117,8 +136,13 @@ export const ChatArea = () => {
 
   const [messageText, setMessageText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -135,6 +159,60 @@ export const ChatArea = () => {
       console.error(e);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeChat) return;
+
+    try {
+      const { url } = await api.uploadFile(file);
+      await api.sendMessage(activeChat.id, url, 'image');
+    } catch (e) {
+      toast.error('Failed to upload file');
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const file = new File([audioBlob], 'voice-message.webm', { type: 'audio/webm' });
+        try {
+          const { url } = await api.uploadFile(file);
+          if (activeChat) {
+             await api.sendMessage(activeChat.id, url, 'audio');
+          }
+        } catch (e) {
+          toast.error('Failed to send voice message');
+        }
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (e) {
+      toast.error('Microphone access denied');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
   };
 
@@ -358,31 +436,51 @@ export const ChatArea = () => {
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Good bye 👋"
-            className="flex-1 bg-transparent border-0 text-sm text-white placeholder:text-[#6b7280] focus:outline-none"
+            placeholder={isRecording ? "Recording audio..." : "Good bye 👋"}
+            disabled={isRecording}
+            className="flex-1 bg-transparent border-0 text-sm text-white placeholder:text-[#6b7280] focus:outline-none disabled:opacity-50"
+          />
+          <input
+             type="file"
+             ref={fileInputRef}
+             className="hidden"
+             accept="image/*"
+             onChange={handleFileUpload}
           />
           <button
-            onClick={() => toast.info('File attachments coming soon!')}
+            onClick={() => fileInputRef.current?.click()}
             className="text-[#6b7280] hover:text-white transition-colors"
+            disabled={isRecording}
           >
             <Paperclip size={20} />
           </button>
-          <button
-            onClick={handleSend}
-            disabled={!messageText.trim() || isSending}
-            className={cn(
-              'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
-              messageText.trim() && !isSending
-                ? 'bg-primary hover:bg-primary/90 cursor-pointer'
-                : 'bg-primary cursor-pointer'
-            )}
-          >
-            {isSending ? (
-              <Loader2 size={18} className="text-white animate-spin" />
-            ) : (
-              <Send size={18} className="text-white" />
-            )}
-          </button>
+          {messageText.trim() ? (
+            <button
+              onClick={handleSend}
+              disabled={isSending}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all bg-primary hover:bg-primary/90 cursor-pointer"
+            >
+              {isSending ? (
+                <Loader2 size={18} className="text-white animate-spin" />
+              ) : (
+                <Send size={18} className="text-white" />
+              )}
+            </button>
+          ) : (
+             <button
+              onClick={isRecording ? stopRecording : startRecording}
+              className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer",
+                isRecording ? "bg-red-500 hover:bg-red-600" : "bg-primary hover:bg-primary/90"
+              )}
+            >
+              {isRecording ? (
+                <div className="w-3 h-3 bg-white rounded-sm animate-pulse" />
+              ) : (
+                <Mic size={18} className="text-white" />
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

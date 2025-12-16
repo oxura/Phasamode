@@ -23,11 +23,16 @@ const placeholderMedia = [
 
 export const GroupInfo = () => {
   const { user } = useAuth();
-  const { activeChat, setShowChatInfo, getChatDisplayName, getChatAvatar, getOtherUser, createDirectChat } = useMessenger();
+  const { activeChat, messages, setShowChatInfo, getChatDisplayName, getChatAvatar, getOtherUser, createDirectChat } = useMessenger();
   const [activeMediaTab, setActiveMediaTab] = useState<MediaTab>('media');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   if (!activeChat) return null;
+
+  const mediaMessages = messages.filter(m => m.message_type === 'image');
+  const voiceMessages = messages.filter(m => m.message_type === 'audio');
+  // Simple regex for links
+  const linkMessages = messages.filter(m => m.message_type === 'text' && /https?:\/\/[^\s]+/.test(m.content));
 
   const displayName = getChatDisplayName(activeChat);
   const displayAvatar = getChatAvatar(activeChat);
@@ -178,16 +183,24 @@ export const GroupInfo = () => {
 
       <div className="flex-1 overflow-y-auto px-4 pb-4 messenger-scrollbar">
         {activeMediaTab === 'media' && (
-          <div className="grid grid-cols-3 gap-1.5">
-            {placeholderMedia.map((url, index) => (
-              <div
-                key={index}
-                className="aspect-square rounded-xl overflow-hidden bg-white/8 border border-white/10 cursor-pointer hover:opacity-80 transition-opacity"
-              >
-                <img src={url} alt={`Media ${index + 1}`} className="w-full h-full object-cover" />
-              </div>
-            ))}
-          </div>
+          mediaMessages.length > 0 ? (
+            <div className="grid grid-cols-3 gap-1.5">
+              {mediaMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className="aspect-square rounded-xl overflow-hidden bg-white/8 border border-white/10 cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => window.open(msg.content, '_blank')}
+                >
+                  <img src={msg.content} alt="Shared media" className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-[#6b7280]">
+              <Image size={32} className="mb-2" />
+              <p className="text-sm">No media shared</p>
+            </div>
+          )
         )}
 
         {activeMediaTab === 'files' && (
@@ -198,17 +211,45 @@ export const GroupInfo = () => {
         )}
 
         {activeMediaTab === 'voice' && (
-          <div className="flex flex-col items-center justify-center py-8 text-[#6b7280]">
-            <Mic size={32} className="mb-2" />
-            <p className="text-sm">No voice messages</p>
-          </div>
+          voiceMessages.length > 0 ? (
+            <div className="space-y-2">
+              {voiceMessages.map((msg) => (
+                <div key={msg.id} className="bg-white/5 p-3 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                     <span className="text-xs text-white">{msg.sender?.username}</span>
+                     <span className="text-[10px] text-[#6b7280]">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                  </div>
+                  <audio src={msg.content} controls className="w-full h-8" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-[#6b7280]">
+              <Mic size={32} className="mb-2" />
+              <p className="text-sm">No voice messages</p>
+            </div>
+          )
         )}
 
         {activeMediaTab === 'links' && (
-          <div className="flex flex-col items-center justify-center py-8 text-[#6b7280]">
-            <Link size={32} className="mb-2" />
-            <p className="text-sm">No links shared</p>
-          </div>
+          linkMessages.length > 0 ? (
+             <div className="space-y-2">
+              {linkMessages.map((msg) => (
+                <div key={msg.id} className="bg-white/5 p-3 rounded-xl break-all">
+                  <div className="flex items-center gap-2 mb-1">
+                     <span className="text-xs text-white">{msg.sender?.username}</span>
+                     <span className="text-[10px] text-[#6b7280]">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="text-sm text-primary underline">{msg.content}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-[#6b7280]">
+              <Link size={32} className="mb-2" />
+              <p className="text-sm">No links shared</p>
+            </div>
+          )
         )}
       </div>
     </div>
