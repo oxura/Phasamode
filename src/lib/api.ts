@@ -86,11 +86,11 @@ export const api = {
     return res.json();
   },
 
-  async sendMessage(chatId: string, content: string, messageType = 'text') {
+  async sendMessage(chatId: string, content: string, messageType = 'text', fileUrl?: string, fileName?: string, fileSize?: number) {
     const res = await fetch(`${API_URL}/api/chats/${chatId}/messages`, {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ content, messageType }),
+      body: JSON.stringify({ content, messageType, fileUrl, fileName, fileSize }),
     });
     return res.json();
   },
