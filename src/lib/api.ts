@@ -103,4 +103,20 @@ export const api = {
     });
     return res.json();
   },
+
+  async uploadFile(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_URL}/api/upload`, {
+      method: 'POST',
+      headers: {
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: formData,
+    });
+    if (!res.ok) {
+        throw new Error('Upload failed');
+    }
+    return res.json();
+  },
 };

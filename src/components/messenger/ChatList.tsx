@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 
 type ChatTab = 'all' | 'groups' | 'contacts';
 
@@ -17,22 +18,28 @@ interface ChatItemProps {
     is_group: boolean;
     avatar: string | null;
     members: { id: string; username: string; avatar: string | null; is_online: boolean }[];
-    last_message: { content: string; created_at: string } | null;
+    last_message: { content: string; created_at: string; message_type?: string } | null;
   };
   isActive: boolean;
   onClick: () => void;
   displayName: string;
   displayAvatar: string | null;
   isOnline: boolean;
-  isVoiceMessage?: boolean;
-  unreadCount?: number;
-  hasVerified?: boolean;
 }
 
-const ChatItem = ({ chat, isActive, onClick, displayName, displayAvatar, isOnline, isVoiceMessage, unreadCount, hasVerified }: ChatItemProps) => {
+const ChatItem = ({ chat, isActive, onClick, displayName, displayAvatar, isOnline }: ChatItemProps) => {
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const isVoiceMessage = chat.last_message?.message_type === 'audio';
+  const isImageMessage = chat.last_message?.message_type === 'image';
+
+  const getMessagePreview = () => {
+      if (isVoiceMessage) return '🎤 Voice message';
+      if (isImageMessage) return '📷 Photo';
+      return chat.last_message?.content || 'No messages yet';
   };
 
   return (
@@ -58,77 +65,22 @@ const ChatItem = ({ chat, isActive, onClick, displayName, displayAvatar, isOnlin
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-sm truncate text-white">{displayName}</span>
-          {hasVerified && (
-            <svg className="w-4 h-4 text-primary flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-            </svg>
-          )}
         </div>
         <p className={cn(
           "text-xs truncate mt-0.5",
           isVoiceMessage ? "text-green-500" : "text-[#6b7280]"
         )}>
-          {isVoiceMessage ? '🎤 Voice message' : chat.last_message?.content || 'No messages yet'}
+          {getMessagePreview()}
         </p>
       </div>
       <div className="flex flex-col items-end gap-1">
         <span className="text-[10px] text-[#6b7280]">
           {chat.last_message?.created_at ? formatTime(chat.last_message.created_at) : ''}
         </span>
-        {unreadCount && unreadCount > 0 && (
-          <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-            <span className="text-[10px] text-white font-medium">{unreadCount}</span>
-          </div>
-        )}
       </div>
     </div>
   );
 };
-
-interface CallItemProps {
-  name: string;
-  avatar: string | null;
-  status: string;
-  isActive?: boolean;
-  hasJoinButton?: boolean;
-}
-
-const CallItem = ({ name, avatar, status, isActive, hasJoinButton }: CallItemProps) => (
-  <div className={cn(
-    'flex items-center gap-3 p-3 rounded-2xl transition-all duration-200',
-    isActive ? 'bg-primary' : 'hover:bg-white/5'
-  )}>
-    <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-      {avatar ? (
-        <img src={avatar} alt={name} className="w-full h-full object-cover" />
-      ) : (
-        <span className="text-white font-semibold">{name.charAt(0).toUpperCase()}</span>
-      )}
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="font-medium text-sm text-white truncate">{name}</p>
-      <p className={cn(
-        "text-xs truncate",
-        isActive ? "text-white/80" : "text-[#6b7280]"
-      )}>{status}</p>
-    </div>
-    {isActive ? (
-      <div className="flex items-center gap-2">
-        <button className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center">
-          <Phone size={14} className="text-white" />
-        </button>
-        <button className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-          <UserPlus size={14} className="text-white" />
-        </button>
-      </div>
-    ) : hasJoinButton && (
-      <button className="flex items-center gap-1 px-3 py-1.5 rounded-xl messenger-input text-xs text-[#6b7280] hover:text-white transition-colors">
-        <UserPlus size={12} />
-        Join
-      </button>
-    )}
-  </div>
-);
 
 export const ChatList = () => {
   const { user } = useAuth();
@@ -387,7 +339,7 @@ export const ChatList = () => {
             {chats.length === 0 ? 'No chats yet. Start a new conversation!' : 'No chats found'}
           </div>
         ) : (
-          filteredChats.map((chat, index) => (
+          filteredChats.map((chat) => (
             <ChatItem
               key={chat.id}
               chat={chat}
@@ -396,9 +348,6 @@ export const ChatList = () => {
               displayName={getChatDisplayName(chat)}
               displayAvatar={getChatAvatar(chat)}
               isOnline={getIsOnline(chat)}
-              hasVerified={index === 0}
-              isVoiceMessage={index === 0}
-              unreadCount={index === 2 ? 9 : index === 4 ? 2 : undefined}
             />
           ))
         )}
@@ -407,36 +356,17 @@ export const ChatList = () => {
       <div className="p-4 border-t border-white/10">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-white">Calls</h3>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl messenger-input text-xs text-[#6b7280] hover:text-white transition-colors">
+          <button
+             onClick={() => toast.info("Calls coming soon!")}
+             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl messenger-input text-xs text-[#6b7280] hover:text-white transition-colors">
             <Video size={12} />
             New meet
           </button>
         </div>
         <div className="space-y-1">
-          <CallItem
-            name="Friendly"
-            avatar={null}
-            status="Sara is talking..."
-            isActive={true}
-          />
-          <CallItem
-            name="Product designers"
-            avatar={null}
-            status="Raya is talking..."
-            hasJoinButton={true}
-          />
-          <CallItem
-            name="Dev Team"
-            avatar={null}
-            status="Jack is talking..."
-            hasJoinButton={true}
-          />
-          <CallItem
-            name="UI design"
-            avatar={null}
-            status="Baran is talking..."
-            hasJoinButton={true}
-          />
+           <div className="text-center py-4 text-[#6b7280] text-xs">
+              No active calls
+           </div>
         </div>
       </div>
     </div>

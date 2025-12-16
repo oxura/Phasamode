@@ -254,7 +254,7 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
            WHERE cm2.chat_id = c.id),
           '[]'
         ) as members,
-        (SELECT json_build_object('id', m.id, 'content', m.content, 'created_at', m.created_at, 'sender_id', m.sender_id)
+        (SELECT json_build_object('id', m.id, 'content', m.content, 'created_at', m.created_at, 'sender_id', m.sender_id, 'message_type', m.message_type)
          FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message
       FROM chats c
       JOIN chat_members cm ON c.id = cm.chat_id
