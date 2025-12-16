@@ -1,0 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 4%;
+    --foreground: 0 0% 100%;
+
+    --card: 220 18% 7%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 220 18% 7%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 16% 12%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 220 14% 16%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 16% 14%;
+    --input: 220 16% 12%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.75rem;
+
+    --messenger-bg: 220 20% 4%;
+    --messenger-sidebar: 220 18% 5%;
+    --messenger-card: 220 16% 10%;
+    --messenger-card-hover: 220 16% 14%;
+    --messenger-active: 217 91% 60%;
+    --messenger-online: 142 76% 45%;
+    --messenger-bubble-sent: 217 91% 55%;
+    --messenger-bubble-received: 220 16% 14%;
+    --messenger-voice: 220 14% 16%;
+
+    --sidebar-background: 220 18% 5%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 16% 12%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 220 16% 14%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    --background: 220 20% 4%;
+    --foreground: 0 0% 100%;
+    --card: 220 18% 7%;
+    --card-foreground: 0 0% 100%;
+    --popover: 220 18% 7%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 16% 12%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 14% 16%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 16% 14%;
+    --input: 220 16% 12%;
+    --ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+    background-color: #070a0f;
+  }
+}
+
+@layer utilities {
+  .messenger-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  .messenger-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .messenger-scrollbar::-webkit-scrollbar-thumb {
+    background: #1e2736;
+    border-radius: 4px;
+  }
+
+  .messenger-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #2d3a4d;
+  }
+
+  .messenger-app-bg {
+    background: radial-gradient(1200px circle at 18% 12%, rgba(59, 130, 246, 0.18), transparent 55%),
+      radial-gradient(900px circle at 82% 28%, rgba(168, 85, 247, 0.14), transparent 60%),
+      linear-gradient(180deg, #090d12 0%, #070a0f 55%, #06080c 100%);
+  }
+
+  .messenger-shell {
+    border-radius: 28px;
+    background: rgba(11, 15, 20, 0.56);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 40px 120px rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+  }
+
+  .messenger-panel {
+    background: rgba(14, 19, 26, 0.6);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .messenger-input {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .messenger-chat {
+    background: rgba(8, 10, 14, 0.55);
+  }
+
+  .messenger-chat::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.22;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='360' viewBox='0 0 360 360'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.12' stroke-width='2'%3E%3Cpath d='M48 72h14M55 65v14'/%3E%3Ccircle cx='96' cy='156' r='12'/%3E%3Cpath d='M142 94c6 8 6 16 0 24c-6-8-6-16 0-24z'/%3E%3Cpath d='M230 66l18 8l-18 8z'/%3E%3Cpath d='M276 148l10 18h-20z'/%3E%3Cpath d='M58 248c16-10 28 10 12 20c-18 10-28-10-12-20z'/%3E%3Cpath d='M190 242h12M196 236v12'/%3E%3Ccircle cx='276' cy='252' r='10'/%3E%3Cpath d='M310 92c-8 10-2 18 8 22'/%3E%3Cpath d='M110 286c-8 10-2 18 8 22'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 360px 360px;
+    background-repeat: repeat;
+    mix-blend-mode: overlay;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px hsl(var(--primary) / 0);
+  }
+}
+
+@keyframes voice-wave {
+  0%, 100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+.voice-bar {
+  animation: voice-wave 0.5s ease-in-out infinite;
+}
