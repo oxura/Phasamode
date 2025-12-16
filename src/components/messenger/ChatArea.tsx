@@ -1,4 +1,4 @@
-import { Phone, Video, MoreHorizontal, Smile, Paperclip, Send, Mic, Pause, AtSign, Loader2, Copy, Square } from 'lucide-react';
+import { Phone, Video, MoreHorizontal, Smile, Paperclip, Send, Mic, Pause, AtSign, Loader2, Copy, Square, Image as ImageIcon } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useMessenger } from '@/context/MessengerContext';
 import { useAuth } from '@/context/AuthContext';
@@ -13,6 +13,7 @@ interface MessageBubbleProps {
     content: string;
     created_at: string;
     sender_id: string;
+    message_type: string;
     sender?: { id: string; username: string; avatar: string | null };
   };
   isOwn: boolean;
@@ -26,7 +27,7 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
   const renderContent = () => {
     if (message.message_type === 'image') {
       return (
-        <div className="rounded-xl overflow-hidden max-w-[280px]">
+        <div className="rounded-xl overflow-hidden max-w-[280px] cursor-pointer" onClick={() => window.open(message.content, '_blank')}>
           <img src={message.content} alt="Shared image" className="w-full h-auto object-cover" />
         </div>
       );
@@ -50,7 +51,10 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
               <span className="text-[11px] text-[#6b7280]">{time}</span>
               <span className="text-[11px] text-white font-medium">{senderName}</span>
             </div>
-            <div className="bg-gradient-to-b from-primary to-primary/80 text-white rounded-2xl rounded-br-sm px-4 py-2.5 shadow-lg shadow-black/20">
+            <div className={cn(
+              "text-white rounded-2xl rounded-br-sm shadow-lg shadow-black/20",
+              message.message_type === 'image' ? "p-1 bg-transparent" : "px-4 py-2.5 bg-gradient-to-b from-primary to-primary/80"
+            )}>
               {renderContent()}
             </div>
           </div>
@@ -81,7 +85,10 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
             <span className="text-[11px] text-white font-medium">{senderName}</span>
             <span className="text-[11px] text-[#6b7280]">{time}</span>
           </div>
-          <div className="bg-white/8 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 backdrop-blur-md">
+          <div className={cn(
+            "rounded-2xl rounded-bl-sm backdrop-blur-md border border-white/10",
+            message.message_type === 'image' ? "p-1 bg-transparent border-none" : "px-4 py-2.5 bg-white/8"
+          )}>
             {renderContent()}
           </div>
         </div>
@@ -98,27 +105,6 @@ const DateDivider = ({ date }: { date: string }) => (
   </div>
 );
 
-const VoiceMessage = () => (
-  <div className="flex items-center gap-3 bg-white/8 border border-white/10 backdrop-blur-md rounded-2xl px-4 py-3 max-w-xs">
-    <button className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-      <Pause size={14} className="text-white" />
-    </button>
-    <div className="flex-1 flex items-center gap-0.5">
-      {Array.from({ length: 30 }).map((_, i) => (
-        <div
-          key={i}
-          className="w-0.5 bg-white/60 rounded-full"
-          style={{ height: `${Math.random() * 20 + 8}px` }}
-        />
-      ))}
-    </div>
-    <span className="text-xs text-[#6b7280]">12''</span>
-    <button className="w-6 h-6 rounded-full bg-white/8 border border-white/10 flex items-center justify-center">
-      <AtSign size={12} className="text-[#6b7280]" />
-    </button>
-  </div>
-);
-
 export const ChatArea = () => {
   const { user } = useAuth();
   const {
@@ -132,6 +118,10 @@ export const ChatArea = () => {
     typingUsers,
     showChatInfo,
     setShowChatInfo,
+    callStatus,
+    startCall,
+    endCall,
+    joinCall
   } = useMessenger();
 
   const [messageText, setMessageText] = useState('');
@@ -168,7 +158,7 @@ export const ChatArea = () => {
 
     try {
       const { url } = await api.uploadFile(file);
-      await api.sendMessage(activeChat.id, url, 'image');
+      await sendMessage(url, 'image', url, file.name, file.size);
     } catch (e) {
       toast.error('Failed to upload file');
     }
@@ -194,7 +184,7 @@ export const ChatArea = () => {
         try {
           const { url } = await api.uploadFile(file);
           if (activeChat) {
-             await api.sendMessage(activeChat.id, url, 'audio');
+             await sendMessage(url, 'audio', url, file.name, file.size);
           }
         } catch (e) {
           toast.error('Failed to send voice message');
@@ -270,6 +260,36 @@ export const ChatArea = () => {
 
   return (
     <div className="flex-1 flex flex-col messenger-chat relative overflow-hidden">
+      {/* Call Overlay */}
+      {callStatus.isActive && callStatus.chatId === activeChat.id && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300">
+            <div className="w-32 h-32 rounded-full overflow-hidden mb-6 border-4 border-primary shadow-[0_0_30px_rgba(59,130,246,0.5)]">
+               {displayAvatar ? (
+                 <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover" />
+               ) : (
+                 <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                    <span className="text-white text-4xl font-bold">{displayName.charAt(0).toUpperCase()}</span>
+                 </div>
+               )}
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">{displayName}</h2>
+            <p className="text-primary animate-pulse mb-8 font-medium">
+               {callStatus.isIncoming ? 'Incoming Call...' : 'Calling...'}
+            </p>
+
+            <div className="flex items-center gap-8">
+               {callStatus.isIncoming && (
+                   <button onClick={joinCall} className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-lg">
+                       <Phone size={32} />
+                   </button>
+               )}
+               <button onClick={endCall} className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-lg">
+                   <Phone size={32} className="rotate-[135deg]" />
+               </button>
+            </div>
+        </div>
+      )}
+
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-24 left-[10%] text-primary/20 text-2xl">✦</div>
         <div className="absolute top-40 right-[25%] text-primary/15 text-lg">✦</div>
@@ -332,16 +352,16 @@ export const ChatArea = () => {
             <Copy size={18} className="text-[#6b7280]" />
           </button>
           <button
-            onClick={() => toast.info('Voice calls coming soon!')}
+            onClick={() => startCall(activeChat.id)}
             className="p-2 rounded-xl hover:bg-white/5 transition-colors"
           >
             <Phone size={18} className="text-[#6b7280]" />
           </button>
           <button
-            onClick={() => toast.info('Video calls coming soon!')}
+            onClick={() => startCall(activeChat.id)}
             className="p-2 rounded-xl hover:bg-white/5 transition-colors"
           >
-            <Square size={18} className="text-[#6b7280]" />
+            <Video size={18} className="text-[#6b7280]" />
           </button>
           <Popover>
             <PopoverTrigger asChild>

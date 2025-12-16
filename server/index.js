@@ -7,7 +7,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, extname } from 'path';
+import multer from 'multer';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,6 +27,23 @@ const pool = new Pool({
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(join(__dirname, 'uploads')));
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + extname(file.originalname));
+  }
+});
+
+const upload = multer({ storage: storage });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
@@ -103,28 +122,6 @@ const handleWSMessage = async (ws, message) => {
   const { type, payload } = message;
 
   switch (type) {
-    case 'send_message': {
-      const { chatId, content, messageType = 'text' } = payload;
-      const result = await pool.query(
-        'INSERT INTO messages (chat_id, sender_id, content, message_type) VALUES ($1, $2, $3, $4) RETURNING *',
-        [chatId, ws.userId, content, messageType]
-      );
-      const newMessage = result.rows[0];
-      
-      const userResult = await pool.query('SELECT id, username, avatar FROM users WHERE id = $1', [ws.userId]);
-      const sender = userResult.rows[0];
-
-      const broadcastMessage = {
-        type: 'new_message',
-        payload: {
-          ...newMessage,
-          sender,
-        },
-      };
-
-      broadcastToChat(chatId, broadcastMessage);
-      break;
-    }
     case 'typing': {
       const { chatId } = payload;
       broadcastToChat(chatId, { type: 'typing', payload: { chatId, userId: ws.userId } }, ws.userId);
@@ -134,6 +131,29 @@ const handleWSMessage = async (ws, message) => {
       const { chatId } = payload;
       broadcastToChat(chatId, { type: 'stop_typing', payload: { chatId, userId: ws.userId } }, ws.userId);
       break;
+    }
+    case 'call_offer':
+    case 'call_answer':
+    case 'call_ice_candidate':
+    case 'call_end': {
+      // Basic signaling
+      const { chatId, targetUserId, sdp, candidate } = payload;
+       if (targetUserId && clients.has(targetUserId)) {
+         const client = clients.get(targetUserId);
+         if (client.readyState === WebSocket.OPEN) {
+           client.send(JSON.stringify({
+             type: type,
+             payload: {
+               ...payload,
+               senderId: ws.userId
+             }
+           }));
+         }
+       } else if (chatId) {
+         // Broadcast to all in chat if no specific target (e.g. group call start)
+         broadcastToChat(chatId, { type: type, payload: { ...payload, senderId: ws.userId } }, ws.userId);
+       }
+       break;
     }
   }
 };
@@ -354,12 +374,12 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
 
 app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
   const { chatId } = req.params;
-  const { content, messageType = 'text' } = req.body;
+  const { content, messageType = 'text', fileUrl, fileName, fileSize } = req.body;
 
   try {
     const result = await pool.query(
-      'INSERT INTO messages (chat_id, sender_id, content, message_type) VALUES ($1, $2, $3, $4) RETURNING *',
-      [chatId, req.user.id, content, messageType]
+      'INSERT INTO messages (chat_id, sender_id, content, message_type, file_url, file_name, file_size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [chatId, req.user.id, content, messageType, fileUrl, fileName, fileSize]
     );
 
     await pool.query('UPDATE chats SET updated_at = NOW() WHERE id = $1', [chatId]);
@@ -453,6 +473,17 @@ app.post('/api/chats/direct', authenticateToken, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  const protocol = req.protocol;
+  const host = req.get('host');
+  // In production, you might want to use the public URL
+  const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+  res.json({ url: fileUrl, filename: req.file.filename, mimetype: req.file.mimetype });
 });
 
 app.get('/api/health', (req, res) => {
