@@ -4,9 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "npm run dev:db && concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
     "dev:server": "cd server && npm install && npm run dev",
+    "dev:db": "docker compose up -d db || docker-compose up -d db",
     "start": "cd server && npm start",
     "build": "vite build",
     "build:dev": "vite build --mode development",
