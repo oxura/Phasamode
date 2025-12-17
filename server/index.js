@@ -498,6 +498,16 @@ const startServer = async () => {
     try {
       await pool.query('SELECT 1');
       console.log('Database connected');
+
+      // Initialize database schema
+      try {
+        const initSql = fs.readFileSync(join(__dirname, 'init.sql'), 'utf8');
+        await pool.query(initSql);
+        console.log('Database schema initialized');
+      } catch (err) {
+        console.error('Failed to initialize database schema:', err);
+      }
+
       break;
     } catch (e) {
       console.log(`Database connection failed, retrying... (${retries} attempts left)`);

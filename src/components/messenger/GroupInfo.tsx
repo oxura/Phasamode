@@ -6,21 +6,6 @@ import { cn } from '@/lib/utils';
 
 type MediaTab = 'media' | 'files' | 'voice' | 'links';
 
-const placeholderMedia = [
-  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1618172193622-ae2d025f4032?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1579762715118-a6f1d4b934f1?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1618556450994-a6a128ef0d9d?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1604076913837-52ab5629fba9?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=200&h=200&fit=crop',
-];
-
 export const GroupInfo = () => {
   const { user } = useAuth();
   const { activeChat, messages, setShowChatInfo, getChatDisplayName, getChatAvatar, getOtherUser, createDirectChat } = useMessenger();
@@ -30,6 +15,7 @@ export const GroupInfo = () => {
   if (!activeChat) return null;
 
   const mediaMessages = messages.filter(m => m.message_type === 'image');
+  const fileMessages = messages.filter(m => m.message_type === 'file');
   const voiceMessages = messages.filter(m => m.message_type === 'audio');
   // Simple regex for links
   const linkMessages = messages.filter(m => m.message_type === 'text' && /https?:\/\/[^\s]+/.test(m.content));
@@ -101,11 +87,9 @@ export const GroupInfo = () => {
 
         {!activeChat.description && activeChat.is_group && (
           <p className="text-xs text-[#6b7280] mb-4 leading-relaxed">
-            In this group, we answer each other's questions and help and support each other in the path of growth.
+            No description available.
           </p>
         )}
-
-        <a href="#" className="text-xs text-primary hover:underline block mb-4">@uiux_designers</a>
       </div>
 
       <div className="px-4 pb-4">
@@ -204,10 +188,39 @@ export const GroupInfo = () => {
         )}
 
         {activeMediaTab === 'files' && (
-          <div className="flex flex-col items-center justify-center py-8 text-[#6b7280]">
-            <File size={32} className="mb-2" />
-            <p className="text-sm">No files shared</p>
-          </div>
+          fileMessages.length > 0 ? (
+            <div className="space-y-2">
+              {fileMessages.map((msg) => (
+                <div key={msg.id} className="bg-white/5 p-3 rounded-xl flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
+                    <File size={20} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                       <span className="text-xs text-white truncate font-medium">{msg.content.split('/').pop() || 'File'}</span>
+                       <span className="text-[10px] text-[#6b7280] ml-2">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-[#6b7280]">{msg.sender?.username}</span>
+                      <a
+                        href={msg.file_url || msg.content}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-primary hover:underline"
+                      >
+                        Download
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-[#6b7280]">
+              <File size={32} className="mb-2" />
+              <p className="text-sm">No files shared</p>
+            </div>
+          )
         )}
 
         {activeMediaTab === 'voice' && (
