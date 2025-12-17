@@ -61,6 +61,32 @@ const authenticateToken = (req, res, next) => {
 
 const clients = new Map();
 
+const broadcastUserStatus = (userId, isOnline) => {
+  const message = JSON.stringify({ type: 'user_status', payload: { userId, isOnline } });
+  clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+};
+
+const getChatMemberIds = async (chatId) => {
+  const result = await pool.query('SELECT user_id FROM chat_members WHERE chat_id = $1', [chatId]);
+  return result.rows.map((r) => r.user_id);
+};
+
+const broadcastToChat = async (chatId, message, excludeUserId = null) => {
+  const memberIds = await getChatMemberIds(chatId);
+  memberIds.forEach((user_id) => {
+    if (user_id !== excludeUserId && clients.has(user_id)) {
+      const client = clients.get(user_id);
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(message));
+      }
+    }
+  });
+};
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get('token');
@@ -97,27 +123,6 @@ wss.on('connection', (ws, req) => {
   }
 });
 
-const broadcastUserStatus = (userId, isOnline) => {
-  const message = JSON.stringify({ type: 'user_status', payload: { userId, isOnline } });
-  clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
-  });
-};
-
-const broadcastToChat = async (chatId, message, excludeUserId = null) => {
-  const result = await pool.query('SELECT user_id FROM chat_members WHERE chat_id = $1', [chatId]);
-  result.rows.forEach(({ user_id }) => {
-    if (user_id !== excludeUserId && clients.has(user_id)) {
-      const client = clients.get(user_id);
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(message));
-      }
-    }
-  });
-};
-
 const handleWSMessage = async (ws, message) => {
   const { type, payload } = message;
 
@@ -137,7 +142,7 @@ const handleWSMessage = async (ws, message) => {
     case 'call_ice_candidate':
     case 'call_end': {
       // Basic signaling
-      const { chatId, targetUserId, sdp, candidate } = payload;
+      const { chatId, targetUserId } = payload;
        if (targetUserId && clients.has(targetUserId)) {
          const client = clients.get(targetUserId);
          if (client.readyState === WebSocket.OPEN) {
@@ -154,6 +159,13 @@ const handleWSMessage = async (ws, message) => {
          broadcastToChat(chatId, { type: type, payload: { ...payload, senderId: ws.userId } }, ws.userId);
        }
        break;
+    }
+    case 'message_deleted': {
+      const { chatId, messageId } = payload;
+      if (chatId && messageId) {
+        broadcastToChat(chatId, { type: 'message_deleted', payload: { chatId, messageId, senderId: ws.userId } }, ws.userId);
+      }
+      break;
     }
   }
 };
