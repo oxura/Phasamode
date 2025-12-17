@@ -32,6 +32,21 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
         </div>
       );
     }
+    if (message.message_type === 'file') {
+      return (
+        <div className="flex items-center gap-3 p-1 min-w-[200px] cursor-pointer" onClick={() => window.open(message.file_url || message.content, '_blank')}>
+          <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+             <Paperclip size={20} className="text-white" />
+          </div>
+          <div className="flex flex-col overflow-hidden">
+             <span className="text-sm font-medium truncate text-white max-w-[150px]">
+               {message.content.split('/').pop() || 'File'}
+             </span>
+             <span className="text-xs text-white/70">Download</span>
+          </div>
+        </div>
+      );
+    }
     if (message.message_type === 'audio') {
       return (
         <div className="flex items-center gap-3 min-w-[200px]">
@@ -158,7 +173,8 @@ export const ChatArea = () => {
 
     try {
       const { url } = await api.uploadFile(file);
-      await sendMessage(url, 'image', url, file.name, file.size);
+      const type = file.type.startsWith('image/') ? 'image' : 'file';
+      await sendMessage(url, type, url, file.name, file.size);
     } catch (e) {
       toast.error('Failed to upload file');
     }
@@ -464,7 +480,6 @@ export const ChatArea = () => {
              type="file"
              ref={fileInputRef}
              className="hidden"
-             accept="image/*"
              onChange={handleFileUpload}
           />
           <button
