@@ -43,7 +43,23 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'video/mp4', 'video/webm', 'video/quicktime',
+      'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm',
+      'application/pdf', 'application/zip', 'text/plain'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type'));
+    }
+  }
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
@@ -177,6 +193,15 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'All fields are required' });
   }
 
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Invalid email format' });
+  }
+
   try {
     const existingUser = await pool.query(
       'SELECT * FROM users WHERE email = $1 OR username = $2',
@@ -279,6 +304,7 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT c.*, 
+        cm.muted,
         COALESCE(
           (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
            FROM chat_members cm2 
@@ -287,7 +313,7 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
           '[]'
         ) as members,
         (SELECT json_build_object('id', m.id, 'content', m.content, 'created_at', m.created_at, 'sender_id', m.sender_id, 'message_type', m.message_type)
-         FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message
+         FROM messages m WHERE m.chat_id = c.id AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 1) as last_message
       FROM chats c
       JOIN chat_members cm ON c.id = cm.chat_id
       WHERE cm.user_id = $1
@@ -300,6 +326,283 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
+  const { chatId } = req.params;
+  const { limit = 50, before } = req.query;
+
+  try {
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    let query = `
+      SELECT m.*, 
+        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+        COALESCE(
+          (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru.username))
+           FROM reactions r
+           JOIN users ru ON r.user_id = ru.id
+           WHERE r.message_id = m.id),
+          '[]'
+        ) as reactions,
+        EXISTS(SELECT 1 FROM saved_messages sm WHERE sm.message_id = m.id AND sm.user_id = $1) as is_saved
+      FROM messages m
+      LEFT JOIN users u ON m.sender_id = u.id
+      WHERE m.chat_id = $2 AND m.deleted_at IS NULL
+    `;
+    const params = [req.user.id, chatId];
+
+    if (before) {
+      query += ` AND m.created_at < $3`;
+      params.push(before);
+    }
+
+    query += ` ORDER BY m.created_at DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(limit));
+
+    const result = await pool.query(query, params);
+    res.json(result.rows.reverse());
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/messages/:id/reactions', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { emoji } = req.body;
+
+  try {
+    const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
+    if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+    const chatId = messageResult.rows[0].chat_id;
+
+    await pool.query(
+      'INSERT INTO reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING',
+      [id, req.user.id, emoji]
+    );
+
+    const userResult = await pool.query('SELECT username FROM users WHERE id = $1', [req.user.id]);
+    
+    broadcastToChat(chatId, { 
+      type: 'reaction_added', 
+      payload: { messageId: id, userId: req.user.id, username: userResult.rows[0].username, emoji, chatId } 
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/messages/:id/reactions', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { emoji } = req.body;
+
+  try {
+    const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
+    if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+    const chatId = messageResult.rows[0].chat_id;
+
+    await pool.query(
+      'DELETE FROM reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+      [id, req.user.id, emoji]
+    );
+
+    broadcastToChat(chatId, { 
+      type: 'reaction_removed', 
+      payload: { messageId: id, userId: req.user.id, emoji, chatId } 
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/messages/:id/save', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      'INSERT INTO saved_messages (message_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [id, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/messages/:id/save', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      'DELETE FROM saved_messages WHERE message_id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/saves', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.*, 
+        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+        c.name as chat_name
+      FROM saved_messages sm
+      JOIN messages m ON sm.message_id = m.id
+      JOIN users u ON m.sender_id = u.id
+      JOIN chats c ON m.chat_id = c.id
+      WHERE sm.user_id = $1
+      ORDER BY sm.created_at DESC`,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.patch('/api/chats/:id/mute', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { muted } = req.body;
+  try {
+    await pool.query(
+      'UPDATE chat_members SET muted = $1 WHERE chat_id = $2 AND user_id = $3',
+      [muted, id, req.user.id]
+    );
+    res.json({ success: true, muted });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/chats/:id/messages/search', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { q } = req.query;
+  try {
+    const result = await pool.query(
+      `SELECT m.*, 
+        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.chat_id = $1 AND m.content ILIKE $2 AND m.deleted_at IS NULL
+      ORDER BY m.created_at DESC LIMIT 50`,
+      [id, `%${q}%`]
+    );
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/chats/:id/messages', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      'UPDATE messages SET deleted_at = NOW() WHERE chat_id = $1 AND sender_id = $2',
+      [id, req.user.id]
+    );
+    // Notify client about history clear (optional, but good for sync)
+    broadcastToChat(id, { type: 'history_cleared', payload: { chatId: id, userId: req.user.id } });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/chats/:id/invite', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO chat_invites (chat_id, code, expires_at, created_by) VALUES ($1, $2, $3, $4) RETURNING code',
+      [id, code, expiresAt, req.user.id]
+    );
+    res.json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/invites/:code/join', authenticateToken, async (req, res) => {
+  const { code } = req.params;
+  try {
+    const inviteResult = await pool.query(
+      'SELECT chat_id FROM chat_invites WHERE code = $1 AND expires_at > NOW()',
+      [code]
+    );
+    if (inviteResult.rows.length === 0) return res.status(404).json({ error: 'Invalid or expired invite' });
+    
+    const chatId = inviteResult.rows[0].chat_id;
+    await pool.query(
+      'INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [chatId, req.user.id]
+    );
+
+    res.json({ success: true, chatId });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/trash', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.*, 
+        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+        c.name as chat_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      JOIN chats c ON m.chat_id = c.id
+      WHERE m.sender_id = $1 AND m.deleted_at IS NOT NULL
+      ORDER BY m.deleted_at DESC`,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/messages/:id/restore', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      'UPDATE messages SET deleted_at = NULL WHERE id = $1 AND sender_id = $2',
+      [id, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/messages/:id/permanent', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      'DELETE FROM messages WHERE id = $1 AND sender_id = $2',
+      [id, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 app.post('/api/chats', authenticateToken, async (req, res) => {
   const { name, isGroup, memberIds, avatar, description } = req.body;
