@@ -14,17 +14,10 @@ Real-time messenger application built with React, Node.js, PostgreSQL, and WebSo
 
 1. Install and start PostgreSQL.
 2. Create a database named `phase_messenger`.
-3. Initialize the database schema:
+3. Create a `.env` file in the root directory (copy from `.env.example` and adjust `DATABASE_URL`).
+4. Initialize the database:
    ```bash
-   psql -d phase_messenger -f server/init.sql
-   ```
-4. Create a `.env` file in the root directory (copy from `.env.example` and adjust `DATABASE_URL`):
-   ```env
-   DATABASE_URL=postgresql://your_user:your_password@localhost:5432/phase_messenger
-   JWT_SECRET=supersecretkey
-   PORT=3001
-   VITE_API_URL=http://localhost:3001
-   VITE_WS_URL=ws://localhost:3001
+   npm run db:init
    ```
 
 ### 2. Install dependencies
@@ -40,9 +33,7 @@ npm run server:install
 npm run dev
 ```
 
-This command will:
-- Start the backend server (port 3001)
-- Start the frontend dev server (port 5173)
+This command will start both backend server (port 3001) and frontend dev server (port 5173).
 
 ### 4. Open the app
 
@@ -55,19 +46,19 @@ Navigate to `http://localhost:5173`
 | `npm run dev` | Start Server and Client |
 | `npm run dev:client` | Start frontend only |
 | `npm run dev:server` | Start backend only |
+| `npm run db:init` | Initialize database schema |
 | `npm run build` | Build for production |
 
 ## Features
 
-- User registration and authentication (email, username, password)
-- Real-time messaging via WebSocket
-- Direct messages (1-to-1)
-- Group chats
-- WebRTC Audio Calls
-- File Uploads (Images, Audio)
-- Online status indicators
-- User search
-- Responsive dark theme UI
+- **Real-time Messaging**: WebSocket-powered chat with delivery status.
+- **Group Chats & Invites**: Create groups and share invite links.
+- **Audio/Video Calls**: WebRTC-based calls with video support.
+- **Reactions & Saves**: React to messages with emojis and save important messages.
+- **File Sharing**: Securely upload images, videos, audio, and documents (up to 50MB).
+- **Search & History**: Full-text search within chats and history clearing.
+- **Trash & Recovery**: Soft-deleted messages can be restored from Trash.
+- **Security**: Robust validation using Zod and secure file upload checks.
 
 ## Tech Stack
 
