@@ -11,31 +11,3 @@ node_modules
 dist
 dist-ssr
 *.local
-
-# Env / secrets
-.env
-.env.*
-!.env.example
-!.env.*.example
-
-# Docker / volumes
-postgres_data
-**/postgres_data
-
-# Certificates / keys
-*.pem
-*.key
-*.p12
-*.pfx
-*.crt
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?

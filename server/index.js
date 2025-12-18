@@ -44,19 +44,32 @@ const LoginSchema = z.object({
 });
 
 const CreateChatSchema = z.object({
-  name: z.string().optional(),
+  name: z.string().max(100).optional(),
   isGroup: z.boolean().optional(),
   memberIds: z.array(z.string().uuid()).optional(),
-  avatar: z.string().optional(),
-  description: z.string().optional(),
+  avatar: z.string().url().optional().or(z.literal('')),
+  description: z.string().max(500).optional(),
 });
 
 const MessageSchema = z.object({
-  content: z.string().optional(),
+  content: z.string().max(5000).optional(),
   messageType: z.enum(['text', 'image', 'video', 'audio', 'file', 'system']).default('text'),
-  fileUrl: z.string().optional(),
+  fileUrl: z.string().url().optional(),
   fileName: z.string().optional(),
-  fileSize: z.number().optional(),
+  fileSize: z.number().int().nonnegative().optional(),
+});
+
+const ReactionSchema = z.object({
+  emoji: z.string().max(10), // Allow for multi-char emojis/variations
+});
+
+const MuteSchema = z.object({
+  muted: z.boolean(),
+});
+
+const CallSchema = z.object({
+  chatId: z.string().uuid(),
+  isVideo: z.boolean().default(false),
 });
 
 const storage = multer.diskStorage({
@@ -73,7 +86,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
   fileFilter: (req, file, cb) => {
@@ -188,21 +201,21 @@ const handleWSMessage = async (ws, message) => {
     case 'call_ice_candidate':
     case 'call_end': {
       const { chatId, targetUserId } = payload;
-       if (targetUserId && clients.has(targetUserId)) {
-         const client = clients.get(targetUserId);
-         if (client.readyState === WebSocket.OPEN) {
-           client.send(JSON.stringify({
-             type: type,
-             payload: {
-               ...payload,
-               senderId: ws.userId
-             }
-           }));
-         }
-       } else if (chatId) {
-         broadcastToChat(chatId, { type: type, payload: { ...payload, senderId: ws.userId } }, ws.userId);
-       }
-       break;
+      if (targetUserId && clients.has(targetUserId)) {
+        const client = clients.get(targetUserId);
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: type,
+            payload: {
+              ...payload,
+              senderId: ws.userId
+            }
+          }));
+        }
+      } else if (chatId) {
+        broadcastToChat(chatId, { type: type, payload: { ...payload, senderId: ws.userId } }, ws.userId);
+      }
+      break;
     }
     case 'message_deleted': {
       const { chatId, messageId } = payload;
@@ -451,14 +464,15 @@ app.post('/api/chats/direct', authenticateToken, async (req, res) => {
 
 app.patch('/api/chats/:id/mute', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { muted } = req.body;
   try {
+    const { muted } = MuteSchema.parse(req.body);
     await pool.query(
       'UPDATE chat_members SET muted = $1 WHERE chat_id = $2 AND user_id = $3',
       [muted, id, req.user.id]
     );
     res.json({ success: true, muted });
   } catch (e) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -488,7 +502,7 @@ app.get('/api/invites/:code/join', authenticateToken, async (req, res) => {
       [code]
     );
     if (inviteResult.rows.length === 0) return res.status(404).json({ error: 'Invalid or expired invite' });
-    
+
     const chatId = inviteResult.rows[0].chat_id;
     await pool.query(
       'INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
@@ -616,9 +630,9 @@ app.delete('/api/chats/:id/messages', authenticateToken, async (req, res) => {
 // Reactions
 app.post('/api/messages/:id/reactions', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { emoji } = req.body;
 
   try {
+    const { emoji } = ReactionSchema.parse(req.body);
     const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
     if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
     const chatId = messageResult.rows[0].chat_id;
@@ -629,23 +643,24 @@ app.post('/api/messages/:id/reactions', authenticateToken, async (req, res) => {
     );
 
     const userResult = await pool.query('SELECT username FROM users WHERE id = $1', [req.user.id]);
-    
-    broadcastToChat(chatId, { 
-      type: 'reaction_added', 
-      payload: { messageId: id, userId: req.user.id, username: userResult.rows[0].username, emoji, chatId } 
+
+    broadcastToChat(chatId, {
+      type: 'reaction_added',
+      payload: { messageId: id, userId: req.user.id, username: userResult.rows[0].username, emoji, chatId }
     });
 
     res.json({ success: true });
   } catch (e) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 app.delete('/api/messages/:id/reactions', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { emoji } = req.body;
 
   try {
+    const { emoji } = ReactionSchema.parse(req.body);
     const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
     if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
     const chatId = messageResult.rows[0].chat_id;
@@ -655,13 +670,14 @@ app.delete('/api/messages/:id/reactions', authenticateToken, async (req, res) =>
       [id, req.user.id, emoji]
     );
 
-    broadcastToChat(chatId, { 
-      type: 'reaction_removed', 
-      payload: { messageId: id, userId: req.user.id, emoji, chatId } 
+    broadcastToChat(chatId, {
+      type: 'reaction_removed',
+      payload: { messageId: id, userId: req.user.id, emoji, chatId }
     });
 
     res.json({ success: true });
   } catch (e) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -754,6 +770,46 @@ app.delete('/api/messages/:id/permanent', authenticateToken, async (req, res) =>
       [id, req.user.id]
     );
     res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Calls
+app.post('/api/calls', authenticateToken, async (req, res) => {
+  try {
+    const { chatId, isVideo } = CallSchema.parse(req.body);
+    const result = await pool.query(
+      'INSERT INTO calls (chat_id, initiator_id, is_video) VALUES ($1, $2, $3) RETURNING *',
+      [chatId, req.user.id, isVideo]
+    );
+    const call = result.rows[0];
+
+    await pool.query(
+      'INSERT INTO call_participants (call_id, user_id, status) VALUES ($1, $2, $3)',
+      [call.id, req.user.id, 'joined']
+    );
+
+    broadcastToChat(chatId, { type: 'call_started', payload: { ...call, senderId: req.user.id } });
+    res.json(call);
+  } catch (e) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.patch('/api/calls/:id/end', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      'UPDATE calls SET ended_at = NOW(), status = \'ended\' WHERE id = $1 AND initiator_id = $2 RETURNING *',
+      [id, req.user.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Call not found or unauthorized' });
+
+    const call = result.rows[0];
+    broadcastToChat(call.chat_id, { type: 'call_ended', payload: { callId: id } });
+    res.json(call);
   } catch (e) {
     res.status(500).json({ error: 'Server error' });
   }

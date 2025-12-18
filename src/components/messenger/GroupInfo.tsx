@@ -1,4 +1,4 @@
-import { X, Users, MessageCircle, Bell, BellOff, Image, File, Mic, Link } from 'lucide-react';
+import { X, Users, MessageCircle, Bell, BellOff, Image, File, Mic, Link, UserPlus, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { useMessenger } from '@/context/MessengerContext';
 import { useAuth } from '@/context/AuthContext';
@@ -11,6 +11,9 @@ export const GroupInfo = () => {
   const { activeChat, messages, setShowChatInfo, getChatDisplayName, getChatAvatar, getOtherUser, createDirectChat } = useMessenger();
   const [activeMediaTab, setActiveMediaTab] = useState<MediaTab>('media');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const { createInvite } = useMessenger();
 
   if (!activeChat) return null;
 
@@ -34,6 +37,22 @@ export const GroupInfo = () => {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleCreateInvite = async () => {
+    try {
+      const { code } = await createInvite(activeChat.id);
+      setInviteCode(code);
+    } catch (e) {
+      console.error('Failed to create invite:', e);
+    }
+  };
+
+  const copyInvite = () => {
+    if (!inviteCode) return;
+    navigator.clipboard.writeText(inviteCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const mediaTabs: { key: MediaTab; label: string }[] = [
@@ -117,6 +136,33 @@ export const GroupInfo = () => {
             </button>
           </div>
         </div>
+
+        {activeChat.is_group && (
+          <div className="mt-4">
+            {!inviteCode ? (
+              <button
+                onClick={handleCreateInvite}
+                className="w-full py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all"
+              >
+                <UserPlus size={18} />
+                Invite to Group
+              </button>
+            ) : (
+              <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl">
+                <p className="text-[10px] text-muted-foreground mb-2 uppercase tracking-wider font-bold">Invite Code</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-black/20 p-2 rounded text-primary text-sm font-mono tracking-widest">{inviteCode}</code>
+                  <button
+                    onClick={copyInvite}
+                    className="p-2 hover:bg-primary/20 text-primary rounded-lg transition-all"
+                  >
+                    {copied ? <Check size={18} /> : <Copy size={18} />}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {activeChat.is_group && activeChat.members && (
@@ -197,8 +243,8 @@ export const GroupInfo = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                       <span className="text-xs text-white truncate font-medium">{msg.content.split('/').pop() || 'File'}</span>
-                       <span className="text-[10px] text-[#6b7280] ml-2">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                      <span className="text-xs text-white truncate font-medium">{msg.content.split('/').pop() || 'File'}</span>
+                      <span className="text-[10px] text-[#6b7280] ml-2">{new Date(msg.created_at).toLocaleTimeString()}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-[#6b7280]">{msg.sender?.username}</span>
@@ -229,8 +275,8 @@ export const GroupInfo = () => {
               {voiceMessages.map((msg) => (
                 <div key={msg.id} className="bg-white/5 p-3 rounded-xl">
                   <div className="flex items-center gap-2 mb-2">
-                     <span className="text-xs text-white">{msg.sender?.username}</span>
-                     <span className="text-[10px] text-[#6b7280]">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                    <span className="text-xs text-white">{msg.sender?.username}</span>
+                    <span className="text-[10px] text-[#6b7280]">{new Date(msg.created_at).toLocaleTimeString()}</span>
                   </div>
                   <audio src={msg.content} controls className="w-full h-8" />
                 </div>
@@ -246,12 +292,12 @@ export const GroupInfo = () => {
 
         {activeMediaTab === 'links' && (
           linkMessages.length > 0 ? (
-             <div className="space-y-2">
+            <div className="space-y-2">
               {linkMessages.map((msg) => (
                 <div key={msg.id} className="bg-white/5 p-3 rounded-xl break-all">
                   <div className="flex items-center gap-2 mb-1">
-                     <span className="text-xs text-white">{msg.sender?.username}</span>
-                     <span className="text-[10px] text-[#6b7280]">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                    <span className="text-xs text-white">{msg.sender?.username}</span>
+                    <span className="text-[10px] text-[#6b7280]">{new Date(msg.created_at).toLocaleTimeString()}</span>
                   </div>
                   <p className="text-sm text-primary underline">{msg.content}</p>
                 </div>

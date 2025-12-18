@@ -19,6 +19,8 @@ interface Message {
   file_url?: string;
   created_at: string;
   sender?: User;
+  reactions?: { emoji: string; user_id: string; username: string }[];
+  is_saved?: boolean;
 }
 
 interface Chat {
@@ -27,6 +29,7 @@ interface Chat {
   is_group: boolean;
   avatar: string | null;
   description: string | null;
+  muted?: boolean;
   members: User[];
   last_message: { id: string; content: string; created_at: string; sender_id: string; message_type?: string } | null;
 }
@@ -41,21 +44,26 @@ interface CallStatus {
 }
 
 type ChatTab = 'all' | 'groups' | 'contacts';
+type MessengerView = 'home' | 'saves' | 'trash' | 'settings' | 'share';
 
 interface MessengerContextType {
   chats: Chat[];
   activeChat: Chat | null;
   messages: Message[];
   activeChatTab: ChatTab;
+  activeView: MessengerView;
   searchQuery: string;
   isLoadingChats: boolean;
   isLoadingMessages: boolean;
   typingUsers: Map<string, string[]>;
   showChatInfo: boolean;
+  saves: Message[];
+  trash: Message[];
   callStatus: CallStatus;
   setShowChatInfo: (show: boolean) => void;
   setActiveChat: (chat: Chat | null) => void;
   setActiveChatTab: (tab: ChatTab) => void;
+  setActiveView: (view: MessengerView) => void;
   setSearchQuery: (query: string) => void;
   sendMessage: (content: string, type?: string, fileUrl?: string, fileName?: string, fileSize?: number) => Promise<void>;
   createDirectChat: (userId: string) => Promise<Chat>;
@@ -64,9 +72,22 @@ interface MessengerContextType {
   getChatDisplayName: (chat: Chat) => string;
   getChatAvatar: (chat: Chat) => string | null;
   getOtherUser: (chat: Chat) => User | null;
-  startCall: (chatId: string) => void;
+  startCall: (chatId: string, isVideo?: boolean) => void;
   endCall: () => void;
   joinCall: () => void;
+  addReaction: (messageId: string, emoji: string) => Promise<void>;
+  removeReaction: (messageId: string, emoji: string) => Promise<void>;
+  saveMessage: (messageId: string) => Promise<void>;
+  unsaveMessage: (messageId: string) => Promise<void>;
+  muteChat: (chatId: string, muted: boolean) => Promise<void>;
+  deleteMessages: (chatId: string) => Promise<void>;
+  searchMessages: (chatId: string, q: string) => Promise<void>;
+  createInvite: (chatId: string) => Promise<{ code: string }>;
+  fetchSaves: () => Promise<void>;
+  fetchTrash: () => Promise<void>;
+  restoreMessage: (messageId: string) => Promise<void>;
+  permanentDeleteMessage: (messageId: string) => Promise<void>;
+  joinInvite: (code: string) => Promise<void>;
 }
 
 const MessengerContext = createContext<MessengerContextType | undefined>(undefined);
@@ -85,9 +106,12 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
   const [activeChatTab, setActiveChatTab] = useState<ChatTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingChats, setIsLoadingChats] = useState(true);
+  const [activeView, setActiveView] = useState<MessengerView>('home');
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Map<string, string[]>>(new Map());
   const [showChatInfo, setShowChatInfo] = useState(false);
+  const [saves, setSaves] = useState<Message[]>([]);
+  const [trash, setTrash] = useState<Message[]>([]);
   const [callStatus, setCallStatus] = useState<CallStatus>({ isActive: false, chatId: null, participants: [], isIncoming: false });
 
   const peerConnection = useRef<RTCPeerConnection | null>(null);
@@ -173,40 +197,76 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
         break;
       }
       case 'call_offer': {
-        const { chatId, senderId, sdp } = message.payload as any;
+        const { chatId, senderId, sdp } = message.payload as { chatId: string; senderId: string; sdp: RTCSessionDescriptionInit };
         if (senderId !== user?.id) {
           incomingOfferRef.current = sdp;
           setCallStatus({
-              isActive: true,
-              chatId,
-              participants: [senderId],
-              isIncoming: true,
-              callerId: senderId,
-              incomingOffer: sdp
+            isActive: true,
+            chatId,
+            participants: [senderId],
+            isIncoming: true,
+            callerId: senderId,
+            incomingOffer: sdp
           });
         }
         break;
       }
       case 'call_answer': {
-        const { sdp } = message.payload as any;
+        const { sdp } = message.payload as { sdp: RTCSessionDescriptionInit };
         if (peerConnection.current) {
-            await peerConnection.current.setRemoteDescription(new RTCSessionDescription(sdp));
+          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(sdp));
         }
         break;
       }
       case 'call_ice_candidate': {
-        const { candidate } = message.payload as any;
+        const { candidate } = message.payload as { candidate: RTCIceCandidateInit };
         if (peerConnection.current && candidate) {
-            await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
         }
         break;
       }
       case 'call_end': {
-         cleanupCall();
-         break;
+        cleanupCall();
+        break;
+      }
+      case 'reaction_added': {
+        const { messageId, userId, username, emoji, chatId } = message.payload as { messageId: string; userId: string; username: string; emoji: string; chatId: string };
+        if (activeChat?.id === chatId) {
+          setMessages(prev => prev.map(msg =>
+            msg.id === messageId
+              ? { ...msg, reactions: [...(msg.reactions || []), { emoji, user_id: userId, username }] }
+              : msg
+          ));
+        }
+        break;
+      }
+      case 'reaction_removed': {
+        const { messageId, userId, emoji, chatId } = message.payload as { messageId: string; userId: string; emoji: string; chatId: string };
+        if (activeChat?.id === chatId) {
+          setMessages(prev => prev.map(msg =>
+            msg.id === messageId
+              ? { ...msg, reactions: (msg.reactions || []).filter(r => !(r.emoji === emoji && r.user_id === userId)) }
+              : msg
+          ));
+        }
+        break;
+      }
+      case 'message_deleted': {
+        const { messageId, chatId } = message.payload as { messageId: string; chatId: string };
+        if (activeChat?.id === chatId) {
+          setMessages(prev => prev.filter(m => m.id !== messageId));
+        }
+        break;
+      }
+      case 'history_cleared': {
+        const { chatId } = message.payload as { chatId: string };
+        if (activeChat?.id === chatId) {
+          setMessages([]);
+        }
+        break;
       }
     }
-  }, [user?.id, cleanupCall]);
+  }, [activeChat?.id, user?.id, cleanupCall]);
 
   const { send } = useWebSocket(handleWSMessage);
 
@@ -246,7 +306,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     };
 
     loadMessages();
-  }, [activeChat?.id]);
+  }, [activeChat]);
 
   const sendMessage = async (content: string, type = 'text', fileUrl?: string, fileName?: string, fileSize?: number) => {
     if (!activeChat) return;
@@ -267,7 +327,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const createDirectChatApi = async (userId: string) => {
-      return await api.createDirectChat(userId);
+    return await api.createDirectChat(userId);
   }
 
   const createGroupChat = async (name: string, memberIds: string[]) => {
@@ -294,66 +354,184 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const setupPeerConnection = (chatId: string) => {
-      const pc = new RTCPeerConnection(RTC_CONFIG);
+    const pc = new RTCPeerConnection(RTC_CONFIG);
 
-      pc.onicecandidate = (event) => {
-          if (event.candidate) {
-              send({ type: 'call_ice_candidate', payload: { chatId, candidate: event.candidate } });
-          }
-      };
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        send('call_ice_candidate', { chatId, candidate: event.candidate });
+      }
+    };
 
-      pc.ontrack = (event) => {
-          if (remoteAudioRef.current) {
-              remoteAudioRef.current.srcObject = event.streams[0];
-          }
-      };
+    pc.ontrack = (event) => {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = event.streams[0];
+      }
+    };
 
-      peerConnection.current = pc;
-      return pc;
+    peerConnection.current = pc;
+    return pc;
   };
 
-  const startCall = async (chatId: string) => {
+  const startCall = async (chatId: string, isVideo = false) => {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localStream.current = stream;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo });
+      localStream.current = stream;
 
-        const pc = setupPeerConnection(chatId);
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      const pc = setupPeerConnection(chatId);
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-        setCallStatus({ isActive: true, chatId, participants: [user!.id], isIncoming: false });
-        send({ type: 'call_offer', payload: { chatId, sdp: offer } });
+      setCallStatus({ isActive: true, chatId, participants: [user!.id], isIncoming: false });
+      send('call_offer', { chatId, sdp: offer, isVideo });
     } catch (e) {
-        console.error('Failed to start call:', e);
+      console.error('Failed to start call:', e);
     }
   };
+
+  const addReaction = async (messageId: string, emoji: string) => {
+    try {
+      await api.addReaction(messageId, emoji);
+      // Feedback: optimistic update or wait for WS
+    } catch (e) {
+      console.error('Failed to add reaction:', e);
+    }
+  };
+
+  const removeReaction = async (messageId: string, emoji: string) => {
+    try {
+      await api.removeReaction(messageId, emoji);
+    } catch (e) {
+      console.error('Failed to remove reaction:', e);
+    }
+  };
+
+  const saveMessage = async (messageId: string) => {
+    try {
+      await api.saveMessage(messageId);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_saved: true } : m));
+    } catch (e) {
+      console.error('Failed to save message:', e);
+    }
+  };
+
+  const unsaveMessage = async (messageId: string) => {
+    try {
+      await api.unsaveMessage(messageId);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_saved: false } : m));
+    } catch (e) {
+      console.error('Failed to unsave message:', e);
+    }
+  };
+
+  const muteChat = async (chatId: string, muted: boolean) => {
+    try {
+      await api.muteChat(chatId, muted);
+      setChats(prev => prev.map(c => c.id === chatId ? { ...c, muted } : c));
+      if (activeChat?.id === chatId) {
+        setActiveChat(prev => prev ? { ...prev, muted } : null);
+      }
+    } catch (e) {
+      console.error('Failed to mute chat:', e);
+    }
+  };
+
+  const deleteMessages = async (chatId: string) => {
+    try {
+      await api.deleteMessages(chatId);
+      if (activeChat?.id === chatId) {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.error('Failed to clear history:', e);
+    }
+  };
+
+  const searchMessages = async (chatId: string, q: string) => {
+    try {
+      const results = await api.searchMessages(chatId, q);
+      setMessages(results);
+    } catch (e) {
+      console.error('Search failed:', e);
+    }
+  };
+
+  const createInvite = async (chatId: string) => {
+    return await api.createInvite(chatId);
+  };
+
+  const fetchSaves = useCallback(async () => {
+    try {
+      const data = await api.getSaves();
+      setSaves(data);
+    } catch (e) {
+      console.error('Failed to fetch saves:', e);
+    }
+  }, []);
+
+  const fetchTrash = useCallback(async () => {
+    try {
+      const data = await api.getTrash();
+      setTrash(data);
+    } catch (e) {
+      console.error('Failed to fetch trash:', e);
+    }
+  }, []);
+
+  const restoreMessage = useCallback(async (messageId: string) => {
+    try {
+      await api.restoreMessage(messageId);
+      setTrash(prev => prev.filter(m => m.id !== messageId));
+      refreshChats(); // Might affect last message
+    } catch (e) {
+      console.error('Failed to restore message:', e);
+    }
+  }, [refreshChats]);
+
+  const permanentDeleteMessage = useCallback(async (messageId: string) => {
+    try {
+      await api.permanentDeleteMessage(messageId);
+      setTrash(prev => prev.filter(m => m.id !== messageId));
+    } catch (e) {
+      console.error('Failed to permanently delete message:', e);
+    }
+  }, []);
+
+  const joinInvite = useCallback(async (code: string) => {
+    try {
+      await api.joinInvite(code);
+      await refreshChats();
+    } catch (e) {
+      console.error('Failed to join invite:', e);
+      throw e;
+    }
+  }, [refreshChats]);
 
   const joinCall = async () => {
     if (!callStatus.chatId || !incomingOfferRef.current) return;
 
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localStream.current = stream;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream.current = stream;
 
-        const pc = setupPeerConnection(callStatus.chatId);
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      const pc = setupPeerConnection(callStatus.chatId);
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-        await pc.setRemoteDescription(new RTCSessionDescription(incomingOfferRef.current));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingOfferRef.current));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
 
-        setCallStatus(prev => ({ ...prev, isIncoming: false, participants: [...prev.participants, user!.id] }));
-        send({ type: 'call_answer', payload: { chatId: callStatus.chatId, sdp: answer } });
+      setCallStatus(prev => ({ ...prev, isIncoming: false, participants: [...prev.participants, user!.id] }));
+      send('call_answer', { chatId: callStatus.chatId, sdp: answer });
     } catch (e) {
-        console.error('Failed to join call:', e);
+      console.error('Failed to join call:', e);
     }
   };
 
   const endCall = () => {
     if (callStatus.chatId) {
-        send({ type: 'call_end', payload: { chatId: callStatus.chatId } });
+      send('call_end', { chatId: callStatus.chatId });
     }
     cleanupCall();
   };
@@ -364,6 +542,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       activeChat,
       messages,
       activeChatTab,
+      activeView,
       searchQuery,
       isLoadingChats,
       isLoadingMessages,
@@ -373,6 +552,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       setShowChatInfo,
       setActiveChat,
       setActiveChatTab,
+      setActiveView,
       setSearchQuery,
       sendMessage,
       createDirectChat,
@@ -384,6 +564,21 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       startCall,
       endCall,
       joinCall,
+      addReaction,
+      removeReaction,
+      saveMessage,
+      unsaveMessage,
+      muteChat,
+      deleteMessages,
+      searchMessages,
+      createInvite,
+      fetchSaves,
+      fetchTrash,
+      restoreMessage,
+      permanentDeleteMessage,
+      joinInvite,
+      saves,
+      trash,
     }}>
       <audio ref={remoteAudioRef} autoPlay />
       {children}

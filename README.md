@@ -13,9 +13,12 @@ Real-time messenger application built with React, Node.js, PostgreSQL, and WebSo
 ### 1. Setup Database
 
 1. Install and start PostgreSQL.
-2. Create a database named `phase_messenger`.
-3. Create a `.env` file in the root directory (copy from `.env.example` and adjust `DATABASE_URL`).
-4. Initialize the database:
+2. Create a database named `phase_messenger`:
+   ```bash
+   psql -U postgres -f server/init-db.sql
+   ```
+3. Create a `.env` file in the root directory (copy from `.env.example`).
+4. Initialize the schema:
    ```bash
    npm run db:init
    ```

@@ -95,11 +95,116 @@ export const api = {
     return res.json();
   },
 
-  async addChatMember(chatId: string, userId: string) {
-    const res = await fetch(`${API_URL}/api/chats/${chatId}/members`, {
+  async deleteMessages(chatId: string) {
+    const res = await fetch(`${API_URL}/api/chats/${chatId}/messages`, {
+      method: 'DELETE',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async searchMessages(chatId: string, q: string) {
+    const res = await fetch(`${API_URL}/api/chats/${chatId}/messages/search?q=${encodeURIComponent(q)}`, {
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async muteChat(chatId: string, muted: boolean) {
+    const res = await fetch(`${API_URL}/api/chats/${chatId}/mute`, {
+      method: 'PATCH',
+      headers: headers(),
+      body: JSON.stringify({ muted }),
+    });
+    return res.json();
+  },
+
+  async addReaction(messageId: string, emoji: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/reactions`, {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ emoji }),
+    });
+    return res.json();
+  },
+
+  async removeReaction(messageId: string, emoji: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/reactions`, {
+      method: 'DELETE',
+      headers: headers(),
+      body: JSON.stringify({ emoji }),
+    });
+    return res.json();
+  },
+
+  async saveMessage(messageId: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/save`, {
+      method: 'POST',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async unsaveMessage(messageId: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/save`, {
+      method: 'DELETE',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async getSaves() {
+    const res = await fetch(`${API_URL}/api/saves`, { headers: headers() });
+    return res.json();
+  },
+
+  async getTrash() {
+    const res = await fetch(`${API_URL}/api/trash`, { headers: headers() });
+    return res.json();
+  },
+
+  async restoreMessage(messageId: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/restore`, {
+      method: 'POST',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async permanentDeleteMessage(messageId: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/permanent`, {
+      method: 'DELETE',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async createInvite(chatId: string) {
+    const res = await fetch(`${API_URL}/api/chats/${chatId}/invite`, {
+      method: 'POST',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async joinInvite(code: string) {
+    const res = await fetch(`${API_URL}/api/invites/${code}/join`, { headers: headers() });
+    return res.json();
+  },
+
+  async startCall(chatId: string, isVideo = false) {
+    const res = await fetch(`${API_URL}/api/calls`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ chatId, isVideo }),
+    });
+    return res.json();
+  },
+
+  async endCall(callId: string) {
+    const res = await fetch(`${API_URL}/api/calls/${callId}/end`, {
+      method: 'PATCH',
+      headers: headers(),
     });
     return res.json();
   },
@@ -115,7 +220,7 @@ export const api = {
       body: formData,
     });
     if (!res.ok) {
-        throw new Error('Upload failed');
+      throw new Error('Upload failed');
     }
     return res.json();
   },

@@ -34,8 +34,7 @@ const NavItem = ({ icon, label, isActive, onClick }: NavItemProps) => (
 
 export const NavigationSidebar = () => {
   const { user, logout, updateUser } = useAuth();
-  const { createDirectChat, setActiveChat } = useMessenger();
-  const [activeNavItem, setActiveNavItem] = useState('Home');
+  const { createDirectChat, setActiveChat, activeView, setActiveView } = useMessenger();
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -91,12 +90,12 @@ export const NavigationSidebar = () => {
   };
 
   const handleNavClick = (label: string) => {
-    setActiveNavItem(label);
-    if (label === 'Search') {
-      setIsSearchOpen(true);
-    } else if (label === 'Settings') {
-      setIsSettingsOpen(true);
-    }
+    if (label === 'Home') setActiveView('home');
+    else if (label === 'Search') setIsSearchOpen(true);
+    else if (label === 'Saves') setActiveView('saves');
+    else if (label === 'Trash') setActiveView('trash');
+    else if (label === 'Settings') setIsSettingsOpen(true);
+    else if (label === 'Share') setActiveView('share');
   };
 
   const navItems = [
@@ -121,7 +120,12 @@ export const NavigationSidebar = () => {
               key={item.label}
               icon={item.icon}
               label={item.label}
-              isActive={activeNavItem === item.label}
+              isActive={
+                (item.label === 'Home' && activeView === 'home') ||
+                (item.label === 'Saves' && activeView === 'saves') ||
+                (item.label === 'Trash' && activeView === 'trash') ||
+                (item.label === 'Share' && activeView === 'share')
+              }
               onClick={() => handleNavClick(item.label)}
             />
           ))}
