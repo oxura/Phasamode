@@ -104,7 +104,7 @@ export const ShareView = () => {
 
                     <div className="text-center">
                         <p className="text-xs text-muted-foreground max-w-[280px] mx-auto italic">
-                            Invite codes are valid for 24 hours and can be used by multiple people.
+                            Invite codes are valid for 7 days and can be used by multiple people.
                         </p>
                     </div>
                 </div>

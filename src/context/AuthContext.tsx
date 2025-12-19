@@ -15,7 +15,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
 }
 
@@ -26,17 +26,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      api.getMe()
-        .then(setUser)
-        .catch(() => {
-          localStorage.removeItem('token');
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+    const loadUser = async () => {
+      try {
+        const me = await api.getMe();
+        setUser(me);
+      } catch (e) {
+        localStorage.removeItem('token');
+        try {
+          const me = await api.getMe();
+          setUser(me);
+        } catch {
+          setUser(null);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadUser();
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -51,9 +57,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(user);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (e) {
+      // Ignore logout errors; still clear local state.
+    } finally {
+      localStorage.removeItem('token');
+      setUser(null);
+    }
   };
 
   const updateUser = (data: Partial<User>) => {

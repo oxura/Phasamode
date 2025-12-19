@@ -89,12 +89,20 @@
   @apply bg-white/20;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 .capsule-input {
   @apply flex items-center gap-2 bg-[#1a1a24]/80 backdrop-blur-md border border-white/10 rounded-full px-4 py-2 shadow-2xl;
 }
 
 .message-bubble {
-  @apply relative p-4 rounded-2xl max-w-[80%] transition-all;
+  @apply relative p-3 rounded-xl max-w-[70%] transition-all;
 }
 
 .message-bubble-mine {

@@ -18,6 +18,39 @@ const __dirname = dirname(__filename);
 
 dotenv.config({ path: join(__dirname, '..', '.env') });
 
+const AUTH_COOKIE_NAME = 'auth_token';
+const getCookieOptions = () => {
+  const sameSite = (process.env.AUTH_COOKIE_SAMESITE || 'lax').toLowerCase();
+  const isNone = sameSite === 'none';
+  return {
+    httpOnly: true,
+    sameSite: isNone ? 'none' : sameSite,
+    secure: isNone ? true : process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/',
+  };
+};
+
+const parseCookies = (cookieHeader = '') => {
+  return cookieHeader.split(';').reduce((acc, part) => {
+    const [key, ...rest] = part.trim().split('=');
+    if (!key) return acc;
+    acc[key] = decodeURIComponent(rest.join('='));
+    return acc;
+  }, {});
+};
+
+const getAuthToken = (req) => {
+  const authHeader = req.headers['authorization'];
+  if (authHeader) {
+    const [type, token] = authHeader.split(' ');
+    if (type === 'Bearer' && token) return token;
+  }
+  const cookies = parseCookies(req.headers.cookie || '');
+  return cookies[AUTH_COOKIE_NAME];
+};
+
+
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
@@ -27,7 +60,14 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-app.use(cors());
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+  : null;
+
+app.use(cors({ origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true, credentials: true }));
 app.use(express.json());
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
 
@@ -57,6 +97,11 @@ const MessageSchema = z.object({
   fileUrl: z.string().url().optional(),
   fileName: z.string().optional(),
   fileSize: z.number().int().nonnegative().optional(),
+  replyTo: z.string().uuid().optional(),
+});
+
+const EditMessageSchema = z.object({
+  content: z.string().min(1).max(5000),
 });
 
 const ReactionSchema = z.object({
@@ -111,8 +156,7 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = getAuthToken(req);
   if (!token) return res.status(401).json({ error: 'No token provided' });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
@@ -124,11 +168,38 @@ const authenticateToken = (req, res, next) => {
 
 const clients = new Map();
 
+const getClientSet = (userId) => {
+  if (!clients.has(userId)) {
+    clients.set(userId, new Set());
+  }
+  return clients.get(userId);
+};
+
+const removeClient = (userId, ws) => {
+  const set = clients.get(userId);
+  if (!set) return 0;
+  set.delete(ws);
+  if (set.size === 0) {
+    clients.delete(userId);
+    return 0;
+  }
+  return set.size;
+};
+
+const isUserOnline = (userId) => {
+  const set = clients.get(userId);
+  return !!set && set.size > 0;
+};
+
 const broadcastUserStatus = (userId, isOnline) => {
   const message = JSON.stringify({ type: 'user_status', payload: { userId, isOnline } });
   clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
+    if (client instanceof Set) {
+      client.forEach((ws) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(message);
+        }
+      });
     }
   });
 };
@@ -138,13 +209,22 @@ const getChatMemberIds = async (chatId) => {
   return result.rows.map((r) => r.user_id);
 };
 
+const isChatMember = async (chatId, userId) => {
+  const result = await pool.query('SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2', [chatId, userId]);
+  return result.rows.length > 0;
+};
+
 const broadcastToChat = async (chatId, message, excludeUserId = null) => {
   const memberIds = await getChatMemberIds(chatId);
   memberIds.forEach((user_id) => {
     if (user_id !== excludeUserId && clients.has(user_id)) {
-      const client = clients.get(user_id);
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(message));
+      const clientSet = clients.get(user_id);
+      if (clientSet instanceof Set) {
+        clientSet.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(message));
+          }
+        });
       }
     }
   });
@@ -152,7 +232,7 @@ const broadcastToChat = async (chatId, message, excludeUserId = null) => {
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const token = url.searchParams.get('token');
+  const token = url.searchParams.get('token') || getAuthToken(req);
 
   if (!token) {
     ws.close(1008, 'No token');
@@ -162,10 +242,18 @@ wss.on('connection', (ws, req) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     ws.userId = decoded.id;
-    clients.set(decoded.id, ws);
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
 
-    pool.query('UPDATE users SET is_online = true WHERE id = $1', [decoded.id]);
-    broadcastUserStatus(decoded.id, true);
+    const clientSet = getClientSet(decoded.id);
+    clientSet.add(ws);
+
+    if (clientSet.size === 1) {
+      pool.query('UPDATE users SET is_online = true WHERE id = $1', [decoded.id]);
+      broadcastUserStatus(decoded.id, true);
+    }
 
     ws.on('message', async (data) => {
       try {
@@ -177,13 +265,30 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('close', async () => {
-      clients.delete(decoded.id);
-      await pool.query('UPDATE users SET is_online = false, last_seen = NOW() WHERE id = $1', [decoded.id]);
-      broadcastUserStatus(decoded.id, false);
+      const remaining = removeClient(decoded.id, ws);
+      if (remaining === 0) {
+        await pool.query('UPDATE users SET is_online = false, last_seen = NOW() WHERE id = $1', [decoded.id]);
+        broadcastUserStatus(decoded.id, false);
+      }
     });
   } catch (e) {
     ws.close(1008, 'Invalid token');
   }
+});
+
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+
+wss.on('close', () => {
+  clearInterval(heartbeatInterval);
 });
 
 const handleWSMessage = async (ws, message) => {
@@ -192,11 +297,13 @@ const handleWSMessage = async (ws, message) => {
   switch (type) {
     case 'typing': {
       const { chatId } = payload;
+      if (!chatId || !(await isChatMember(chatId, ws.userId))) break;
       broadcastToChat(chatId, { type: 'typing', payload: { chatId, userId: ws.userId } }, ws.userId);
       break;
     }
     case 'stop_typing': {
       const { chatId } = payload;
+      if (!chatId || !(await isChatMember(chatId, ws.userId))) break;
       broadcastToChat(chatId, { type: 'stop_typing', payload: { chatId, userId: ws.userId } }, ws.userId);
       break;
     }
@@ -205,6 +312,7 @@ const handleWSMessage = async (ws, message) => {
     case 'call_ice_candidate':
     case 'call_end': {
       const { chatId, targetUserId } = payload;
+      if (chatId && !(await isChatMember(chatId, ws.userId))) break;
       if (targetUserId && clients.has(targetUserId)) {
         const client = clients.get(targetUserId);
         if (client.readyState === WebSocket.OPEN) {
@@ -223,7 +331,7 @@ const handleWSMessage = async (ws, message) => {
     }
     case 'message_deleted': {
       const { chatId, messageId } = payload;
-      if (chatId && messageId) {
+      if (chatId && messageId && (await isChatMember(chatId, ws.userId))) {
         broadcastToChat(chatId, { type: 'message_deleted', payload: { chatId, messageId, senderId: ws.userId } }, ws.userId);
       }
       break;
@@ -253,7 +361,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const user = result.rows[0];
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-
+    res.cookie(AUTH_COOKIE_NAME, token, getCookieOptions());
     res.json({ user, token });
   } catch (e) {
     if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
@@ -281,6 +389,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
+    res.cookie(AUTH_COOKIE_NAME, token, getCookieOptions());
     res.json({
       user: { id: user.id, email: user.email, username: user.username, avatar: user.avatar, is_online: user.is_online },
       token,
@@ -342,14 +451,18 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
         cm.muted,
         cm.role,
         COALESCE(
-          (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
+          (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online, 'last_read_at', cm2.last_read_at))
            FROM chat_members cm2 
            JOIN users u ON cm2.user_id = u.id 
            WHERE cm2.chat_id = c.id),
           '[]'
         ) as members,
         (SELECT json_build_object('id', m.id, 'content', m.content, 'created_at', m.created_at, 'sender_id', m.sender_id, 'message_type', m.message_type)
-         FROM messages m WHERE m.chat_id = c.id AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 1) as last_message
+         FROM messages m WHERE m.chat_id = c.id AND m.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+         )
+         ORDER BY m.created_at DESC LIMIT 1) as last_message
       FROM chats c
       JOIN chat_members cm ON c.id = cm.chat_id
       WHERE cm.user_id = $1
@@ -391,7 +504,7 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
       `SELECT c.*, 
         cm.role,
         COALESCE(
-          (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
+          (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online, 'last_read_at', cm2.last_read_at))
            FROM chat_members cm2 
            JOIN users u ON cm2.user_id = u.id 
            WHERE cm2.chat_id = c.id),
@@ -430,7 +543,7 @@ AND(SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2`,
         `SELECT c.*,
   cm.role,
   COALESCE(
-    (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
+    (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online, 'last_read_at', cm2.last_read_at))
              FROM chat_members cm2 
              JOIN users u ON cm2.user_id = u.id 
              WHERE cm2.chat_id = c.id),
@@ -457,7 +570,7 @@ AND(SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2`,
       `SELECT c.*,
   cm.role,
   COALESCE(
-    (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
+    (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online, 'last_read_at', cm2.last_read_at))
            FROM chat_members cm2 
            JOIN users u ON cm2.user_id = u.id 
            WHERE cm2.chat_id = c.id),
@@ -556,6 +669,10 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     let query = `
       SELECT m.*,
       json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+      CASE
+        WHEN rm.id IS NULL THEN NULL
+        ELSE json_build_object('id', rm.id, 'content', rm.content, 'sender_id', rm.sender_id, 'sender_username', ru.username)
+      END as reply,
       COALESCE(
         (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru.username))
            FROM reactions r
@@ -566,7 +683,12 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       EXISTS(SELECT 1 FROM saved_messages sm WHERE sm.message_id = m.id AND sm.user_id = $1) as is_saved
       FROM messages m
       LEFT JOIN users u ON m.sender_id = u.id
+      LEFT JOIN messages rm ON m.reply_to = rm.id
+      LEFT JOIN users ru ON rm.sender_id = ru.id
       WHERE m.chat_id = $2 AND m.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+      )
     `;
     const params = [req.user.id, chatId];
 
@@ -589,7 +711,7 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
 app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { content, messageType, fileUrl, fileName, fileSize } = MessageSchema.parse(req.body);
+    const { content, messageType, fileUrl, fileName, fileSize, replyTo } = MessageSchema.parse(req.body);
 
     // Membership check
     const memberCheck = await pool.query(
@@ -601,20 +723,38 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this chat' });
     }
 
+    let replyToId = replyTo || null;
+    if (replyToId) {
+      const replyCheck = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [replyToId]);
+      if (replyCheck.rows.length === 0 || replyCheck.rows[0].chat_id !== chatId) {
+        return res.status(400).json({ error: 'Invalid reply target' });
+      }
+    }
+
     const result = await pool.query(
-      'INSERT INTO messages (chat_id, sender_id, content, message_type, file_url, file_name, file_size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [chatId, req.user.id, content, messageType, fileUrl, fileName, fileSize]
+      'INSERT INTO messages (chat_id, sender_id, content, message_type, file_url, file_name, file_size, reply_to) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [chatId, req.user.id, content, messageType, fileUrl, fileName, fileSize, replyToId]
     );
 
     await pool.query('UPDATE chats SET updated_at = NOW() WHERE id = $1', [chatId]);
 
     const userResult = await pool.query('SELECT id, username, avatar FROM users WHERE id = $1', [req.user.id]);
 
+    let reply = null;
+    if (result.rows[0].reply_to) {
+      const replyResult = await pool.query(
+        'SELECT m.id, m.content, m.sender_id, u.username AS sender_username FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = $1',
+        [result.rows[0].reply_to]
+      );
+      reply = replyResult.rows[0] || null;
+    }
+
     const message = {
       ...result.rows[0],
       sender: userResult.rows[0],
       reactions: [],
-      is_saved: false
+      is_saved: false,
+      reply,
     };
 
     broadcastToChat(chatId, { type: 'new_message', payload: message });
@@ -637,11 +777,138 @@ app.get('/api/chats/:id/messages/search', authenticateToken, async (req, res) =>
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       WHERE m.chat_id = $1 AND m.content ILIKE $2 AND m.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $3
+      )
       ORDER BY m.created_at DESC LIMIT 50`,
-      [id, `% ${q}% `]
+      [id, `%${q}%`, req.user.id]
     );
     res.json(result.rows);
   } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/chats/:chatId/read', authenticateToken, async (req, res) => {
+  const { chatId } = req.params;
+  try {
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    await pool.query(
+      'UPDATE chat_members SET last_read_at = NOW() WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+
+    const lastReadAt = new Date().toISOString();
+    broadcastToChat(chatId, { type: 'read_receipt', payload: { chatId, userId: req.user.id, lastReadAt } }, req.user.id);
+    res.json({ success: true, lastReadAt });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const opts = getCookieOptions();
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: opts.sameSite,
+    secure: opts.secure,
+    path: '/',
+  });
+  res.json({ success: true });
+});
+
+app.patch('/api/messages/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { content } = EditMessageSchema.parse(req.body);
+    const messageResult = await pool.query('SELECT chat_id, sender_id FROM messages WHERE id = $1', [id]);
+    if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+
+    const { chat_id: chatId, sender_id: senderId } = messageResult.rows[0];
+    const memberCheck = await pool.query(
+      'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+    const isAdmin = memberCheck.rows[0].role === 'admin';
+    if (req.user.id !== senderId && !isAdmin) {
+      return res.status(403).json({ error: 'Not authorized to edit this message' });
+    }
+
+    const result = await pool.query(
+      'UPDATE messages SET content = $1, edited_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING id, content, edited_at, updated_at, chat_id',
+      [content, id]
+    );
+    const updated = result.rows[0];
+    broadcastToChat(chatId, { type: 'message_edited', payload: { id: updated.id, chatId, content: updated.content, edited_at: updated.edited_at } });
+    res.json(updated);
+  } catch (e) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/messages/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const messageResult = await pool.query('SELECT chat_id, sender_id FROM messages WHERE id = $1', [id]);
+    if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+
+    const { chat_id: chatId, sender_id: senderId } = messageResult.rows[0];
+    const memberCheck = await pool.query(
+      'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    const isAdmin = memberCheck.rows[0].role === 'admin';
+    if (req.user.id !== senderId && !isAdmin) {
+      return res.status(403).json({ error: 'Not authorized to delete this message' });
+    }
+
+    await pool.query('UPDATE messages SET deleted_at = NOW() WHERE id = $1', [id]);
+    broadcastToChat(chatId, { type: 'message_deleted', payload: { chatId, messageId: id, senderId: req.user.id } }, req.user.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/messages/:id/delete-for-me', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
+    if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+    const chatId = messageResult.rows[0].chat_id;
+
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    await pool.query(
+      'INSERT INTO message_deletes (message_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [id, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -811,6 +1078,9 @@ app.get('/api/saves', authenticateToken, async (req, res) => {
       JOIN users u ON m.sender_id = u.id
       JOIN chats c ON m.chat_id = c.id
       WHERE sm.user_id = $1
+      AND NOT EXISTS (
+        SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+      )
       ORDER BY sm.created_at DESC`,
       [req.user.id]
     );
@@ -823,6 +1093,9 @@ app.get('/api/saves', authenticateToken, async (req, res) => {
 // Trash
 app.get('/api/trash', authenticateToken, async (req, res) => {
   try {
+    await pool.query(
+      `DELETE FROM messages WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'`
+    );
     const result = await pool.query(
       `SELECT m.*,
   json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
@@ -831,6 +1104,9 @@ app.get('/api/trash', authenticateToken, async (req, res) => {
       JOIN users u ON m.sender_id = u.id
       JOIN chats c ON m.chat_id = c.id
       WHERE m.sender_id = $1 AND m.deleted_at IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+      )
       ORDER BY m.deleted_at DESC`,
       [req.user.id]
     );
@@ -924,7 +1200,7 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
   const protocol = req.protocol;
   const host = req.get('host');
   const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
-  res.json({ url: fileUrl, filename: req.file.filename, mimetype: req.file.mimetype });
+  res.json({ url: fileUrl, filename: req.file.originalname, mimetype: req.file.mimetype });
 });
 
 app.get('/api/health', (req, res) => {

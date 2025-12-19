@@ -37,8 +37,10 @@ const ChatItem = ({ chat, isActive, onClick, displayName, displayAvatar, isOnlin
   const isImageMessage = chat.last_message?.message_type === 'image';
 
   const getMessagePreview = () => {
-    if (isVoiceMessage) return '🎤 Voice message';
-    if (isImageMessage) return '📷 Photo';
+    if (isVoiceMessage) return '\u{1F3A4} Voice message';
+    if (isImageMessage) return '\u{1F5BC}\u{FE0F} Photo';
+    if (chat.last_message?.message_type === 'file') return '\u{1F4CE} File';
+    if (chat.last_message?.message_type === 'video') return '\u{1F3AC} Video';
     return chat.last_message?.content || 'No messages yet';
   };
 
@@ -200,7 +202,7 @@ export const ChatList = () => {
   const activeCallName = activeCallChat ? getChatDisplayName(activeCallChat) : null;
 
   return (
-    <div className="w-[360px] messenger-panel flex flex-col border-r border-white/10 messenger-scrollbar overflow-hidden">
+    <div className="w-full md:w-[360px] xl:w-[380px] 2xl:w-[420px] messenger-panel flex flex-col border-r border-white/10 messenger-scrollbar overflow-hidden">
       <div className="p-4">
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" size={16} />

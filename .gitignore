@@ -11,3 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+server/.pgdata
+server/uploads
+
+# Local Netlify folder
+.netlify

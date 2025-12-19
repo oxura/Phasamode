@@ -1,16 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMessenger } from '@/context/MessengerContext';
 import { Trash2, Search, RotateCcw, AlertCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 export const TrashView = () => {
     const { trash, fetchTrash, restoreMessage, permanentDeleteMessage } = useMessenger();
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         fetchTrash();
     }, [fetchTrash]);
+
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const filteredTrash = normalizedQuery
+        ? trash.filter((msg) => {
+            const contentMatch = msg.content?.toLowerCase().includes(normalizedQuery);
+            const senderMatch = msg.sender?.username?.toLowerCase().includes(normalizedQuery);
+            const chatMatch = msg.chat_name?.toLowerCase().includes(normalizedQuery);
+            return contentMatch || senderMatch || chatMatch;
+        })
+        : trash;
 
     const handleRestore = async (id: string) => {
         await restoreMessage(id);
@@ -33,13 +43,15 @@ export const TrashView = () => {
                     </div>
                     <div>
                         <h2 className="text-xl font-bold">Trash</h2>
-                        <p className="text-sm text-muted-foreground">{trash.length} deleted items</p>
+                        <p className="text-sm text-muted-foreground">{filteredTrash.length} deleted items</p>
                     </div>
                 </div>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                     <input
                         placeholder="Search trash..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                         className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all w-64"
                     />
                 </div>
@@ -51,21 +63,23 @@ export const TrashView = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
-                {trash.length === 0 ? (
+                {filteredTrash.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
                         <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
                             <Trash2 size={40} className="text-muted-foreground" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-medium">Trash is empty</h3>
+                            <h3 className="text-lg font-medium">{searchQuery ? 'No matches' : 'Trash is empty'}</h3>
                             <p className="text-muted-foreground text-sm max-w-[250px]">
-                                Deleted messages will stay here for 30 days before being permanently removed.
+                                {searchQuery
+                                    ? 'Try a different keyword or clear the search.'
+                                    : 'Deleted messages will stay here for 30 days before being permanently removed.'}
                             </p>
                         </div>
                     </div>
                 ) : (
                     <div className="grid gap-4 max-w-4xl mx-auto">
-                        {trash.map((msg) => (
+                        {filteredTrash.map((msg) => (
                             <div key={msg.id} className="messenger-card group border-destructive/10">
                                 <div className="flex items-start gap-4 p-4">
                                     <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0 flex items-center justify-center">

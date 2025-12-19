@@ -5,8 +5,8 @@ Real-time messenger application built with React, Node.js, PostgreSQL, and WebSo
 ## Requirements
 
 - Node.js 18+
-- PostgreSQL 16+
 - npm or bun
+- PostgreSQL 16+ (optional for dev; required for production)
 
 ## Configuration
 
@@ -18,37 +18,32 @@ Create a `.env` file in the root directory. The following environment variables 
 
 ## Quick Start
 
-### 1. Setup Database
-
-1. Install and start PostgreSQL.
-2. Create a database named `phase_messenger`:
-   ```bash
-   psql -U postgres -f server/init-db.sql
-   ```
-3. Create a `.env` file in the root directory (copy from `.env.example`).
-4. Initialize the schema:
-   ```bash
-   npm run db:init
-   ```
-
-### 2. Install dependencies
+### 1. Install dependencies
 
 ```bash
 npm install
-npm run server:install
 ```
 
-### 3. Start the application
+### 2. Start the application
 
 ```bash
 npm run dev
 ```
 
-This command will start both backend server (port 3001) and frontend dev server (port 5173).
+This command starts:
+- the frontend dev server (port 5173)
+- the backend API/WebSocket server (port 3001)
+- a local PostgreSQL instance (auto-started if `DATABASE_URL` is unreachable)
 
-### 4. Open the app
+### 3. Open the app
 
 Navigate to `http://localhost:5173`
+
+## Database (dev)
+
+In development, `npm run dev` will bootstrap a local PostgreSQL instance automatically if it cannot connect to the `DATABASE_URL` from `.env`. The embedded database data is stored in `server/.pgdata`.
+
+If you prefer to use your own PostgreSQL server, just set `DATABASE_URL` to a running instance and the dev bootstrap will use it instead.
 
 ## Available Scripts
 
@@ -59,6 +54,29 @@ Navigate to `http://localhost:5173`
 | `npm run dev:server` | Start backend only |
 | `npm run db:init` | Initialize database schema |
 | `npm run build` | Build for production |
+
+## Production deployment
+
+### Backend (Node + WebSocket)
+
+The backend requires a long-running Node server with WebSocket support and a real PostgreSQL database. It will **not** run on Netlify Functions.
+
+Required env vars:
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `PORT` (optional)
+- `CORS_ORIGIN` (comma-separated allowed frontend origins)
+- `AUTH_COOKIE_SAMESITE` (optional, `lax` by default; use `none` with HTTPS for cross-site cookies)
+
+### Frontend (Netlify)
+
+This repo includes:
+- `netlify.toml` (build command + publish dir)
+- `public/_redirects` (SPA routing)
+
+Set Netlify environment variables:
+- `VITE_API_URL` (e.g. `https://api.your-domain.com`)
+- `VITE_WS_URL` (e.g. `wss://api.your-domain.com`)
 
 ## Features
 

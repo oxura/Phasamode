@@ -32,7 +32,7 @@ const JoinInvite = () => {
                 navigate('/');
             } catch (e: unknown) {
                 console.error(e);
-                const errorMsg = e instanceof Error ? (e as any).response?.data?.error || e.message : 'Invalid or expired invite code';
+                const errorMsg = e instanceof Error ? e.message : 'Invalid or expired invite code';
                 setError(errorMsg);
                 toast.error('Failed to join chat');
                 setTimeout(() => navigate('/'), 3000);

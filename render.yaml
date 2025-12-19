@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: phase-messenger-api
+    runtime: node
+    plan: free
+    region: virginia
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: node index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: phase-messenger-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_COOKIE_SAMESITE
+        value: none
+      - key: CORS_ORIGIN
+        value: https://phasee-messenger.netlify.app
+
+databases:
+  - name: phase-messenger-db
+    plan: free
+    region: virginia
+    databaseName: phase_messenger
+    user: phase_user

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS chat_members (
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   role VARCHAR(20) DEFAULT 'member', -- admin, member
   muted BOOLEAN DEFAULT false,
+  last_read_at TIMESTAMP WITH TIME ZONE,
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   PRIMARY KEY (chat_id, user_id)
 );
@@ -42,6 +43,8 @@ CREATE TABLE IF NOT EXISTS messages (
   file_name TEXT,
   file_size BIGINT,
   deleted_at TIMESTAMP WITH TIME ZONE,
+  edited_at TIMESTAMP WITH TIME ZONE,
+  reply_to UUID REFERENCES messages(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -90,3 +93,14 @@ CREATE TABLE IF NOT EXISTS chat_invites (
   created_by UUID REFERENCES users(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS message_deletes (
+  message_id UUID REFERENCES messages(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (message_id, user_id)
+);
+
+ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to UUID REFERENCES messages(id) ON DELETE SET NULL;

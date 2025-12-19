@@ -9,6 +9,7 @@ interface User {
   username: string;
   avatar: string | null;
   is_online: boolean;
+  last_read_at?: string | null;
 }
 
 interface Message {
@@ -18,10 +19,17 @@ interface Message {
   content: string;
   message_type: string;
   file_url?: string;
+  file_name?: string;
+  file_size?: number;
   created_at: string;
+  edited_at?: string | null;
+  updated_at?: string;
+  reply_to?: string | null;
+  reply?: { id: string; content: string; sender_id: string; sender_username: string } | null;
   sender?: User;
   reactions?: { emoji: string; user_id: string; username: string }[];
   is_saved?: boolean;
+  chat_name?: string;
 }
 
 interface Chat {
@@ -41,6 +49,7 @@ interface CallStatus {
   chatId: string | null;
   participants: string[];
   isIncoming: boolean;
+  isVideo?: boolean;
   callerId?: string;
   incomingOffer?: RTCSessionDescriptionInit;
 }
@@ -62,12 +71,16 @@ interface MessengerContextType {
   saves: Message[];
   trash: Message[];
   callStatus: CallStatus;
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
+  sendTyping: (chatId: string) => void;
+  sendStopTyping: (chatId: string) => void;
   setShowChatInfo: (show: boolean) => void;
   setActiveChat: (chat: Chat | null) => void;
   setActiveChatTab: (tab: ChatTab) => void;
   setActiveView: (view: MessengerView) => void;
   setSearchQuery: (query: string) => void;
-  sendMessage: (content: string, type?: string, fileUrl?: string, fileName?: string, fileSize?: number) => Promise<void>;
+  sendMessage: (content: string, type?: string, fileUrl?: string, fileName?: string, fileSize?: number, replyTo?: string | null) => Promise<void>;
   createDirectChat: (userId: string) => Promise<Chat>;
   createGroupChat: (name: string, memberIds: string[]) => Promise<Chat>;
   refreshChats: () => Promise<void>;
@@ -81,6 +94,9 @@ interface MessengerContextType {
   removeReaction: (messageId: string, emoji: string) => Promise<void>;
   saveMessage: (messageId: string) => Promise<void>;
   unsaveMessage: (messageId: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
+  deleteMessageForMe: (messageId: string) => Promise<void>;
+  editMessage: (messageId: string, content: string) => Promise<void>;
   muteChat: (chatId: string, muted: boolean) => Promise<void>;
   deleteMessages: (chatId: string) => Promise<void>;
   searchMessages: (chatId: string, q: string) => Promise<void>;
@@ -114,12 +130,25 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
   const [showChatInfo, setShowChatInfo] = useState(false);
   const [saves, setSaves] = useState<Message[]>([]);
   const [trash, setTrash] = useState<Message[]>([]);
-  const [callStatus, setCallStatus] = useState<CallStatus>({ isActive: false, chatId: null, participants: [], isIncoming: false });
+  const [callStatus, setCallStatus] = useState<CallStatus>({ isActive: false, chatId: null, participants: [], isIncoming: false, isVideo: false });
+  const [localStreamState, setLocalStreamState] = useState<MediaStream | null>(null);
+  const [remoteStreamState, setRemoteStreamState] = useState<MediaStream | null>(null);
 
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const incomingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
+  const loadingChatIdRef = useRef<string | null>(null);
+  const loadedChatIdRef = useRef<string | null>(null);
+  const messagesLengthRef = useRef<number>(0);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChat?.id ?? null;
+  }, [activeChat?.id]);
+
+  useEffect(() => {
+    messagesLengthRef.current = messages.length;
+  }, [messages.length]);
 
   const cleanupCall = useCallback(() => {
     if (localStream.current) {
@@ -130,10 +159,9 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       peerConnection.current.close();
       peerConnection.current = null;
     }
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-    }
-    setCallStatus({ isActive: false, chatId: null, participants: [], isIncoming: false, incomingOffer: undefined });
+    setCallStatus({ isActive: false, chatId: null, participants: [], isIncoming: false, incomingOffer: undefined, isVideo: false });
+    setLocalStreamState(null);
+    setRemoteStreamState(null);
     incomingOfferRef.current = null;
   }, []);
 
@@ -172,6 +200,12 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
           ...chat,
           members: chat.members.map(m => m.id === userId ? { ...m, is_online: isOnline } : m),
         })));
+        if (activeChat) {
+          setActiveChat(prev => prev ? {
+            ...prev,
+            members: prev.members.map(m => m.id === userId ? { ...m, is_online: isOnline } : m),
+          } : prev);
+        }
         break;
       }
       case 'typing': {
@@ -199,7 +233,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
         break;
       }
       case 'call_offer': {
-        const { chatId, senderId, sdp } = message.payload as { chatId: string; senderId: string; sdp: RTCSessionDescriptionInit };
+        const { chatId, senderId, sdp, isVideo } = message.payload as { chatId: string; senderId: string; sdp: RTCSessionDescriptionInit; isVideo?: boolean };
         if (senderId !== user?.id) {
           incomingOfferRef.current = sdp;
           setCallStatus({
@@ -208,7 +242,8 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
             participants: [senderId],
             isIncoming: true,
             callerId: senderId,
-            incomingOffer: sdp
+            incomingOffer: sdp,
+            isVideo: !!isVideo
           });
         }
         break;
@@ -260,6 +295,45 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
         }
         break;
       }
+      case 'message_edited': {
+        const { id, chatId, content, edited_at } = message.payload as { id: string; chatId: string; content: string; edited_at?: string };
+        if (!id || !chatId) break;
+        if (activeChat?.id === chatId) {
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, content, edited_at: edited_at || m.edited_at } : m));
+        }
+        setChats(prev => prev.map(chat => {
+          if (chat.id === chatId && chat.last_message?.id === id) {
+            return {
+              ...chat,
+              last_message: {
+                ...chat.last_message,
+                content,
+              },
+            };
+          }
+          return chat;
+        }));
+        break;
+      }
+      case 'read_receipt': {
+        const { chatId, userId, lastReadAt } = message.payload as { chatId: string; userId: string; lastReadAt: string };
+        if (!chatId || !userId) break;
+        setChats(prev => prev.map(chat => (
+          chat.id === chatId
+            ? {
+              ...chat,
+              members: chat.members.map(m => m.id === userId ? { ...m, last_read_at: lastReadAt } : m),
+            }
+            : chat
+        )));
+        if (activeChat?.id === chatId) {
+          setActiveChat(prev => prev ? {
+            ...prev,
+            members: prev.members.map(m => m.id === userId ? { ...m, last_read_at: lastReadAt } : m),
+          } : prev);
+        }
+        break;
+      }
       case 'history_cleared': {
         const { chatId } = message.payload as { chatId: string };
         if (activeChat?.id === chatId) {
@@ -272,6 +346,14 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
 
   const { send } = useWebSocket(handleWSMessage);
 
+  const sendTyping = useCallback((chatId: string) => {
+    send('typing', { chatId });
+  }, [send]);
+
+  const sendStopTyping = useCallback((chatId: string) => {
+    send('stop_typing', { chatId });
+  }, [send]);
+
   const refreshChats = useCallback(async () => {
     if (!user) return;
     setIsLoadingChats(true);
@@ -279,6 +361,13 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       const data = await api.getChats();
       if (Array.isArray(data)) {
         setChats(data);
+        const currentId = activeChatIdRef.current;
+        if (currentId) {
+          const updatedActive = data.find((c) => c.id === currentId);
+          if (updatedActive) {
+            setActiveChat(updatedActive);
+          }
+        }
       } else {
         console.error('Invalid chats data received:', data);
         setChats([]);
@@ -295,31 +384,73 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     refreshChats();
   }, [refreshChats]);
 
+  const markChatRead = useCallback(async (chatId: string) => {
+    if (!user?.id) return;
+    try {
+      const result = await api.markChatRead(chatId);
+      const lastReadAt = result?.lastReadAt;
+      if (!lastReadAt) return;
+      setChats(prev => prev.map(chat => (
+        chat.id === chatId
+          ? { ...chat, members: chat.members.map(m => m.id === user.id ? { ...m, last_read_at: lastReadAt } : m) }
+          : chat
+      )));
+      if (activeChatIdRef.current === chatId) {
+        setActiveChat(prev => prev ? {
+          ...prev,
+          members: prev.members.map(m => m.id === user.id ? { ...m, last_read_at: lastReadAt } : m),
+        } : prev);
+      }
+    } catch (e) {
+      console.error('Failed to mark chat read:', e);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
-    if (!activeChat) {
+    const chatId = activeChat?.id;
+    if (!chatId) {
       setMessages([]);
       return;
     }
 
     const loadMessages = async () => {
+      if (loadingChatIdRef.current === chatId) return;
+      if (loadedChatIdRef.current === chatId && messagesLengthRef.current > 0) return;
+      loadingChatIdRef.current = chatId;
       setIsLoadingMessages(true);
       try {
-        const data = await api.getMessages(activeChat.id);
+        const data = await api.getMessages(chatId);
         setMessages(data);
+        loadedChatIdRef.current = chatId;
+        if (data && data.length > 0) {
+          markChatRead(chatId);
+        }
       } catch (e) {
         console.error('Failed to load messages:', e);
       } finally {
         setIsLoadingMessages(false);
+        if (loadingChatIdRef.current === chatId) {
+          loadingChatIdRef.current = null;
+        }
       }
     };
 
     loadMessages();
-  }, [activeChat]);
+  }, [activeChat?.id, markChatRead]);
 
-  const sendMessage = async (content: string, type = 'text', fileUrl?: string, fileName?: string, fileSize?: number) => {
+  useEffect(() => {
+    if (!activeChat || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (last.sender_id !== user?.id) {
+      markChatRead(activeChat.id);
+    }
+  }, [messages.length, activeChat?.id, user?.id, markChatRead]);
+
+  const sendMessage = async (content: string, type = 'text', fileUrl?: string, fileName?: string, fileSize?: number, replyTo?: string | null) => {
     if (!activeChat) return;
     try {
-      await api.sendMessage(activeChat.id, content, type, fileUrl, fileName, fileSize);
+      await api.sendMessage(activeChat.id, content, type, fileUrl, fileName, fileSize, replyTo || undefined);
     } catch (e) {
       console.error('Failed to send message:', e);
     }
@@ -371,9 +502,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     };
 
     pc.ontrack = (event) => {
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = event.streams[0];
-      }
+      setRemoteStreamState(event.streams[0]);
     };
 
     peerConnection.current = pc;
@@ -384,6 +513,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo });
       localStream.current = stream;
+      setLocalStreamState(stream);
 
       const pc = setupPeerConnection(chatId);
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -391,7 +521,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      setCallStatus({ isActive: true, chatId, participants: [user!.id], isIncoming: false });
+      setCallStatus({ isActive: true, chatId, participants: [user!.id], isIncoming: false, isVideo });
       send('call_offer', { chatId, sdp: offer, isVideo });
     } catch (e) {
       console.error('Failed to start call:', e);
@@ -433,6 +563,38 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const deleteMessage = async (messageId: string) => {
+    try {
+      await api.deleteMessage(messageId);
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+      refreshChats();
+      fetchTrash();
+    } catch (e) {
+      console.error('Failed to delete message:', e);
+    }
+  };
+
+  const deleteMessageForMe = async (messageId: string) => {
+    try {
+      await api.deleteMessageForMe(messageId);
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+      refreshChats();
+    } catch (e) {
+      console.error('Failed to delete message for me:', e);
+    }
+  };
+
+  const editMessage = async (messageId: string, content: string) => {
+    try {
+      const updated = await api.editMessage(messageId, content);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: updated.content ?? content, edited_at: updated.edited_at ?? m.edited_at } : m));
+      refreshChats();
+    } catch (e) {
+      console.error('Failed to edit message:', e);
+      throw e;
+    }
+  };
+
   const muteChat = async (chatId: string, muted: boolean) => {
     try {
       await api.muteChat(chatId, muted);
@@ -453,9 +615,9 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (e: unknown) {
       console.error('Failed to delete messages:', e);
-      const axiosError = e as any; // Temporary cast for brevity but avoids top-level any
-      if (axiosError.response?.status === 403) {
-        toast.error(axiosError.response.data.error || 'Only admins can clear chat history');
+      const message = e instanceof Error ? e.message : '';
+      if (message) {
+        toast.error(message);
       } else {
         toast.error('Failed to clear history');
       }
@@ -526,8 +688,9 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     if (!callStatus.chatId || !incomingOfferRef.current) return;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callStatus.isVideo });
       localStream.current = stream;
+      setLocalStreamState(stream);
 
       const pc = setupPeerConnection(callStatus.chatId);
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -563,6 +726,10 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       typingUsers,
       showChatInfo,
       callStatus,
+      localStream: localStreamState,
+      remoteStream: remoteStreamState,
+      sendTyping,
+      sendStopTyping,
       setShowChatInfo,
       setActiveChat,
       setActiveChatTab,
@@ -582,6 +749,9 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       removeReaction,
       saveMessage,
       unsaveMessage,
+      deleteMessage,
+      deleteMessageForMe,
+      editMessage,
       muteChat,
       deleteMessages,
       searchMessages,
@@ -594,7 +764,6 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       saves,
       trash,
     }}>
-      <audio ref={remoteAudioRef} autoPlay />
       {children}
     </MessengerContext.Provider>
   );

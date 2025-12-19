@@ -14,11 +14,11 @@ export function useWebSocket(onMessage: (message: WSMessage) => void) {
 
   const connect = useCallback(() => {
     const token = localStorage.getItem('token');
-    if (!token) return;
 
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const ws = new WebSocket(`${WS_URL}?token=${token}`);
+    const wsUrl = token ? `${WS_URL}?token=${token}` : WS_URL;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       setIsConnected(true);

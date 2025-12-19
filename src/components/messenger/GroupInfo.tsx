@@ -10,18 +10,19 @@ export const GroupInfo = () => {
   const { user } = useAuth();
   const { activeChat, messages, setShowChatInfo, getChatDisplayName, getChatAvatar, getOtherUser, createDirectChat } = useMessenger();
   const [activeMediaTab, setActiveMediaTab] = useState<MediaTab>('media');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(!activeChat.muted);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { createInvite, muteChat } = useMessenger();
 
   useEffect(() => {
+    if (!activeChat) return;
     setNotificationsEnabled(!activeChat.muted);
-  }, [activeChat.id, activeChat.muted]);
+  }, [activeChat]);
 
   if (!activeChat) return null;
 
-  const mediaMessages = messages.filter(m => m.message_type === 'image');
+  const mediaMessages = messages.filter(m => m.message_type === 'image' || m.message_type === 'video');
   const fileMessages = messages.filter(m => m.message_type === 'file');
   const voiceMessages = messages.filter(m => m.message_type === 'audio');
   // Simple regex for links
@@ -54,7 +55,8 @@ export const GroupInfo = () => {
 
   const copyInvite = () => {
     if (!inviteCode) return;
-    navigator.clipboard.writeText(inviteCode);
+    const link = `${window.location.origin}/join/${inviteCode}`;
+    navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -67,7 +69,7 @@ export const GroupInfo = () => {
   ];
 
   return (
-    <div className="w-[320px] messenger-panel border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
+    <div className="w-[320px] xl:w-[360px] 2xl:w-[400px] messenger-panel border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
       <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
         <h3 className="font-semibold text-white">Group info</h3>
         <button
@@ -92,8 +94,7 @@ export const GroupInfo = () => {
             <p className="text-xs text-[#6b7280]">
               {activeChat.is_group ? (
                 <>
-                  {activeChat.members?.length || 0} Members •{' '}
-                  <span className="text-green-500">{onlineMembers} Online</span>
+                  {activeChat.members?.length || 0} Members {'\u2022'} <span className="text-green-500">{onlineMembers} Online</span>
                 </>
               ) : isOnline ? (
                 <span className="text-green-500">Online</span>
@@ -229,7 +230,11 @@ export const GroupInfo = () => {
                   className="aspect-square rounded-xl overflow-hidden bg-white/8 border border-white/10 cursor-pointer hover:opacity-80 transition-opacity"
                   onClick={() => window.open(msg.content, '_blank')}
                 >
-                  <img src={msg.content} alt="Shared media" className="w-full h-full object-cover" />
+                  {msg.message_type === 'video' ? (
+                    <video src={msg.file_url || msg.content} className="w-full h-full object-cover" muted />
+                  ) : (
+                    <img src={msg.content} alt="Shared media" className="w-full h-full object-cover" />
+                  )}
                 </div>
               ))}
             </div>

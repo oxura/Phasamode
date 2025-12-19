@@ -4,6 +4,7 @@ export interface User {
   email?: string;
   avatar: string | null;
   is_online: boolean;
+  last_read_at?: string | null;
 }
 
 export interface Message {
@@ -13,6 +14,9 @@ export interface Message {
   content: string;
   message_type: string;
   created_at: string;
+  edited_at?: string | null;
+  reply_to?: string | null;
+  reply?: { id: string; content: string; sender_id: string; sender_username: string } | null;
   sender?: User;
 }
 
