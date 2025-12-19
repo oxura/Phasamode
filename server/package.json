@@ -7,11 +7,9 @@
     "dev": "node dev.js"
   },
   "dependencies": {
-    "@embedded-postgres/windows-x64": "17.6.0-beta.15",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "embedded-postgres": "^17.6.0-beta.15",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
@@ -19,5 +17,9 @@
     "pg": "^8.11.3",
     "ws": "^8.14.2",
     "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@embedded-postgres/windows-x64": "^17.6.0-beta.15",
+    "embedded-postgres": "^17.6.0-beta.15"
   }
 }

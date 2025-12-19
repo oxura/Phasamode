@@ -5,7 +5,7 @@ services:
     plan: free
     region: virginia
     rootDir: server
-    buildCommand: npm ci
+    buildCommand: npm ci --omit=dev
     startCommand: node index.js
     healthCheckPath: /api/health
     envVars:
