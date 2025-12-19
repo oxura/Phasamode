@@ -104,7 +104,11 @@ const upload = multer({
   }
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL ERROR: JWT_SECRET is not defined in environment variables.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -336,6 +340,7 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
     const result = await pool.query(
       `SELECT c.*, 
         cm.muted,
+        cm.role,
         COALESCE(
           (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
            FROM chat_members cm2 
@@ -384,6 +389,7 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
 
     const fullChat = await pool.query(
       `SELECT c.*, 
+        cm.role,
         COALESCE(
           (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
            FROM chat_members cm2 
@@ -391,8 +397,10 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
            WHERE cm2.chat_id = c.id),
           '[]'
         ) as members
-      FROM chats c WHERE c.id = $1`,
-      [chat.id]
+      FROM chats c 
+      LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $2
+      WHERE c.id = $1`,
+      [chat.id, req.user.id]
     );
 
     res.json(fullChat.rows[0]);
@@ -413,22 +421,25 @@ app.post('/api/chats/direct', authenticateToken, async (req, res) => {
        WHERE c.is_group = false 
        AND cm1.user_id = $1 
        AND cm2.user_id = $2
-       AND (SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2`,
+AND(SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2`,
       [req.user.id, userId]
     );
 
     if (existingChat.rows.length > 0) {
       const fullChat = await pool.query(
-        `SELECT c.*, 
-          COALESCE(
-            (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
+        `SELECT c.*,
+  cm.role,
+  COALESCE(
+    (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
              FROM chat_members cm2 
              JOIN users u ON cm2.user_id = u.id 
              WHERE cm2.chat_id = c.id),
-            '[]'
+  '[]'
           ) as members
-        FROM chats c WHERE c.id = $1`,
-        [existingChat.rows[0].id]
+        FROM chats c 
+        LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $2
+        WHERE c.id = $1`,
+        [existingChat.rows[0].id, req.user.id]
       );
       return res.json(fullChat.rows[0]);
     }
@@ -443,18 +454,20 @@ app.post('/api/chats/direct', authenticateToken, async (req, res) => {
     await pool.query('INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2)', [chat.id, userId]);
 
     const fullChat = await pool.query(
-      `SELECT c.*, 
-        COALESCE(
-          (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
+      `SELECT c.*,
+  cm.role,
+  COALESCE(
+    (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online))
            FROM chat_members cm2 
            JOIN users u ON cm2.user_id = u.id 
            WHERE cm2.chat_id = c.id),
-          '[]'
+  '[]'
         ) as members
-      FROM chats c WHERE c.id = $1`,
-      [chat.id]
+      FROM chats c 
+      LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $2
+      WHERE c.id = $1`,
+      [chat.id, req.user.id]
     );
-
     res.json(fullChat.rows[0]);
   } catch (e) {
     console.error(e);
@@ -479,7 +492,17 @@ app.patch('/api/chats/:id/mute', authenticateToken, async (req, res) => {
 
 app.post('/api/chats/:id/invite', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const code = nanoid(10).toUpperCase();
+
+  // Membership check
+  const memberCheck = await pool.query(
+    'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+    [id, req.user.id]
+  );
+  if (memberCheck.rows.length === 0) {
+    return res.status(403).json({ error: 'Not a member of this chat' });
+  }
+
+  const code = nanoid(6).toUpperCase();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
@@ -531,16 +554,16 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     }
 
     let query = `
-      SELECT m.*, 
-        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
-        COALESCE(
-          (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru.username))
+      SELECT m.*,
+      json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+      COALESCE(
+        (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru.username))
            FROM reactions r
            JOIN users ru ON r.user_id = ru.id
            WHERE r.message_id = m.id),
-          '[]'
-        ) as reactions,
-        EXISTS(SELECT 1 FROM saved_messages sm WHERE sm.message_id = m.id AND sm.user_id = $1) as is_saved
+      '[]'
+    ) as reactions,
+      EXISTS(SELECT 1 FROM saved_messages sm WHERE sm.message_id = m.id AND sm.user_id = $1) as is_saved
       FROM messages m
       LEFT JOIN users u ON m.sender_id = u.id
       WHERE m.chat_id = $2 AND m.deleted_at IS NULL
@@ -552,7 +575,7 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       params.push(before);
     }
 
-    query += ` ORDER BY m.created_at DESC LIMIT $${params.length + 1}`;
+    query += ` ORDER BY m.created_at DESC LIMIT $${params.length + 1} `;
     params.push(parseInt(limit));
 
     const result = await pool.query(query, params);
@@ -567,6 +590,16 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
   try {
     const { chatId } = req.params;
     const { content, messageType, fileUrl, fileName, fileSize } = MessageSchema.parse(req.body);
+
+    // Membership check
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
 
     const result = await pool.query(
       'INSERT INTO messages (chat_id, sender_id, content, message_type, file_url, file_name, file_size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
@@ -599,13 +632,13 @@ app.get('/api/chats/:id/messages/search', authenticateToken, async (req, res) =>
   const { q } = req.query;
   try {
     const result = await pool.query(
-      `SELECT m.*, 
-        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender
+      `SELECT m.*,
+  json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       WHERE m.chat_id = $1 AND m.content ILIKE $2 AND m.deleted_at IS NULL
       ORDER BY m.created_at DESC LIMIT 50`,
-      [id, `%${q}%`]
+      [id, `% ${q}% `]
     );
     res.json(result.rows);
   } catch (e) {
@@ -616,9 +649,23 @@ app.get('/api/chats/:id/messages/search', authenticateToken, async (req, res) =>
 app.delete('/api/chats/:id/messages', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query(
-      'UPDATE messages SET deleted_at = NOW() WHERE chat_id = $1 AND sender_id = $2',
+    // Membership and Admin check
+    const memberCheck = await pool.query(
+      'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
       [id, req.user.id]
+    );
+
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    if (memberCheck.rows[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can clear chat history' });
+    }
+
+    await pool.query(
+      'UPDATE messages SET deleted_at = NOW() WHERE chat_id = $1',
+      [id]
     );
     broadcastToChat(id, { type: 'history_cleared', payload: { chatId: id, userId: req.user.id } });
     res.json({ success: true });
@@ -636,6 +683,15 @@ app.post('/api/messages/:id/reactions', authenticateToken, async (req, res) => {
     const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
     if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
     const chatId = messageResult.rows[0].chat_id;
+
+    // Membership check
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
 
     await pool.query(
       'INSERT INTO reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING',
@@ -665,6 +721,15 @@ app.delete('/api/messages/:id/reactions', authenticateToken, async (req, res) =>
     if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
     const chatId = messageResult.rows[0].chat_id;
 
+    // Membership check
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
     await pool.query(
       'DELETE FROM reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
       [id, req.user.id, emoji]
@@ -686,6 +751,19 @@ app.delete('/api/messages/:id/reactions', authenticateToken, async (req, res) =>
 app.post('/api/messages/:id/save', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
+    if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+    const chatId = messageResult.rows[0].chat_id;
+
+    // Membership check
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
     await pool.query(
       'INSERT INTO saved_messages (message_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [id, req.user.id]
@@ -699,6 +777,19 @@ app.post('/api/messages/:id/save', authenticateToken, async (req, res) => {
 app.delete('/api/messages/:id/save', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    const messageResult = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [id]);
+    if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+    const chatId = messageResult.rows[0].chat_id;
+
+    // Membership check
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
     await pool.query(
       'DELETE FROM saved_messages WHERE message_id = $1 AND user_id = $2',
       [id, req.user.id]
@@ -712,9 +803,9 @@ app.delete('/api/messages/:id/save', authenticateToken, async (req, res) => {
 app.get('/api/saves', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT m.*, 
-        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
-        c.name as chat_name
+      `SELECT m.*,
+  json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+  c.name as chat_name
       FROM saved_messages sm
       JOIN messages m ON sm.message_id = m.id
       JOIN users u ON m.sender_id = u.id
@@ -733,9 +824,9 @@ app.get('/api/saves', authenticateToken, async (req, res) => {
 app.get('/api/trash', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT m.*, 
-        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
-        c.name as chat_name
+      `SELECT m.*,
+  json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+  c.name as chat_name
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       JOIN chats c ON m.chat_id = c.id
@@ -779,6 +870,16 @@ app.delete('/api/messages/:id/permanent', authenticateToken, async (req, res) =>
 app.post('/api/calls', authenticateToken, async (req, res) => {
   try {
     const { chatId, isVideo } = CallSchema.parse(req.body);
+
+    // Membership check
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
     const result = await pool.query(
       'INSERT INTO calls (chat_id, initiator_id, is_video) VALUES ($1, $2, $3) RETURNING *',
       [chatId, req.user.id, isVideo]

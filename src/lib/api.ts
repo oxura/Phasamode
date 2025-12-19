@@ -58,6 +58,10 @@ export const api = {
 
   async getChats() {
     const res = await fetch(`${API_URL}/api/chats`, { headers: headers() });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to fetch chats');
+    }
     return res.json();
   },
 

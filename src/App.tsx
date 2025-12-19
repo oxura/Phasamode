@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import Index from './pages/Index';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import JoinInvite from './pages/JoinInvite';
 import NotFound from './pages/NotFound';
 import { Loader2 } from 'lucide-react';
 
@@ -74,6 +75,10 @@ const AppRoutes = () => {
             <Register />
           </PublicRoute>
         }
+      />
+      <Route
+        path="/join/:code"
+        element={<JoinInvite />}
       />
       <Route path="*" element={<NotFound />} />
     </Routes>

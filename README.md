@@ -8,6 +8,14 @@ Real-time messenger application built with React, Node.js, PostgreSQL, and WebSo
 - PostgreSQL 16+
 - npm or bun
 
+## Configuration
+
+Create a `.env` file in the root directory. The following environment variables are required:
+
+- `DATABASE_URL`: PostgreSQL connection string.
+- `JWT_SECRET`: A strong, random string for JWT signing. **Mandatory**. Application will not start without it.
+- `PORT`: Port for the backend server (default: 3001).
+
 ## Quick Start
 
 ### 1. Setup Database

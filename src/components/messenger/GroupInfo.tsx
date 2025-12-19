@@ -1,5 +1,5 @@
 import { X, Users, MessageCircle, Bell, BellOff, Image, File, Mic, Link, UserPlus, Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMessenger } from '@/context/MessengerContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -10,10 +10,14 @@ export const GroupInfo = () => {
   const { user } = useAuth();
   const { activeChat, messages, setShowChatInfo, getChatDisplayName, getChatAvatar, getOtherUser, createDirectChat } = useMessenger();
   const [activeMediaTab, setActiveMediaTab] = useState<MediaTab>('media');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(!activeChat.muted);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const { createInvite } = useMessenger();
+  const { createInvite, muteChat } = useMessenger();
+
+  useEffect(() => {
+    setNotificationsEnabled(!activeChat.muted);
+  }, [activeChat.id, activeChat.muted]);
 
   if (!activeChat) return null;
 
@@ -116,7 +120,11 @@ export const GroupInfo = () => {
           <span className="text-sm text-white">Notifications</span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+              onClick={() => {
+                const newState = !notificationsEnabled;
+                setNotificationsEnabled(newState);
+                muteChat(activeChat.id, !newState);
+              }}
               className={cn(
                 'w-10 h-5 rounded-full transition-colors relative',
                 notificationsEnabled ? 'bg-primary' : 'bg-white/10'

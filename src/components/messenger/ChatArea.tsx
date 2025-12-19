@@ -28,8 +28,9 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
   const senderName = message.sender?.username || 'Unknown';
   const senderAvatar = message.sender?.avatar;
 
+  const { user } = useAuth();
   const handleReactionClick = (emoji: string) => {
-    const hasReacted = message.reactions?.some(r => r.emoji === emoji && r.user_id === message.sender_id);
+    const hasReacted = message.reactions?.some(r => r.emoji === emoji && r.user_id === user?.id);
     if (hasReacted) removeReaction(message.id, emoji);
     else addReaction(message.id, emoji);
   };
@@ -389,7 +390,13 @@ export const ChatArea = () => {
             <h2 className="font-bold text-lg text-white leading-tight">{displayName}</h2>
             <p className="text-[12px] font-medium tracking-wide">
               {chatTypingUsers.length > 0 ? (
-                <span className="text-primary animate-pulse">Arshia is typing...</span>
+                <span className="text-primary animate-pulse">
+                  {chatTypingUsers.length === 1
+                    ? `${activeChat.members.find(m => m.id === chatTypingUsers[0])?.username || 'Someone'} is typing...`
+                    : chatTypingUsers.length === 2
+                      ? `${activeChat.members.find(m => m.id === chatTypingUsers[0])?.username || 'Someone'} and ${activeChat.members.find(m => m.id === chatTypingUsers[1])?.username || 'someone'} are typing...`
+                      : 'Several people are typing...'}
+                </span>
               ) : activeChat.is_group ? (
                 <span className="text-white/40">{activeChat.members?.length || 0} Members • 12 Online</span>
               ) : isOnline ? (
@@ -438,8 +445,18 @@ export const ChatArea = () => {
                   <Pause size={16} className="text-white/40" /> {activeChat.muted ? 'Unmute' : 'Mute'}
                 </button>
                 <div className="h-px bg-white/5 my-1" />
-                <button onClick={() => deleteMessages(activeChat.id)} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-xl hover:bg-white/5 text-red-400 transition-colors">
-                  <Square size={16} className="text-red-400/50" /> Clear History
+                <button
+                  onClick={() => deleteMessages(activeChat.id)}
+                  disabled={activeChat.role !== 'admin'}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-xl transition-colors",
+                    activeChat.role === 'admin'
+                      ? "hover:bg-white/5 text-red-400"
+                      : "opacity-50 cursor-not-allowed text-white/20"
+                  )}
+                >
+                  <Square size={16} className={activeChat.role === 'admin' ? "text-red-400/50" : "text-white/20"} />
+                  Clear History {activeChat.role !== 'admin' && '(Admin only)'}
                 </button>
               </div>
             </PopoverContent>

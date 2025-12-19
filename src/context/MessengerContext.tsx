@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { api } from '@/lib/api';
+import { toast } from 'sonner';
 import { useWebSocket, WSMessage } from '@/hooks/useWebSocket';
 
 interface User {
@@ -30,6 +31,7 @@ interface Chat {
   avatar: string | null;
   description: string | null;
   muted?: boolean;
+  role?: string;
   members: User[];
   last_message: { id: string; content: string; created_at: string; sender_id: string; message_type?: string } | null;
 }
@@ -275,9 +277,15 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     setIsLoadingChats(true);
     try {
       const data = await api.getChats();
-      setChats(data);
+      if (Array.isArray(data)) {
+        setChats(data);
+      } else {
+        console.error('Invalid chats data received:', data);
+        setChats([]);
+      }
     } catch (e) {
       console.error('Failed to load chats:', e);
+      setChats([]);
     } finally {
       setIsLoadingChats(false);
     }
@@ -443,8 +451,14 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       if (activeChat?.id === chatId) {
         setMessages([]);
       }
-    } catch (e) {
-      console.error('Failed to clear history:', e);
+    } catch (e: unknown) {
+      console.error('Failed to delete messages:', e);
+      const axiosError = e as any; // Temporary cast for brevity but avoids top-level any
+      if (axiosError.response?.status === 403) {
+        toast.error(axiosError.response.data.error || 'Only admins can clear chat history');
+      } else {
+        toast.error('Failed to clear history');
+      }
     }
   };
 

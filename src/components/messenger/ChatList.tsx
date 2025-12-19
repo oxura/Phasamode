@@ -37,9 +37,9 @@ const ChatItem = ({ chat, isActive, onClick, displayName, displayAvatar, isOnlin
   const isImageMessage = chat.last_message?.message_type === 'image';
 
   const getMessagePreview = () => {
-      if (isVoiceMessage) return '🎤 Voice message';
-      if (isImageMessage) return '📷 Photo';
-      return chat.last_message?.content || 'No messages yet';
+    if (isVoiceMessage) return '🎤 Voice message';
+    if (isImageMessage) return '📷 Photo';
+    return chat.last_message?.content || 'No messages yet';
   };
 
   return (
@@ -118,7 +118,7 @@ export const ChatList = () => {
     { key: 'contacts', label: 'Contacts' },
   ];
 
-  const filteredChats = chats.filter((chat) => {
+  const filteredChats = (chats || []).filter((chat) => {
     const name = getChatDisplayName(chat);
     const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -156,17 +156,17 @@ export const ChatList = () => {
   };
 
   const handleStartCall = async (userId: string) => {
-      try {
-          const chat = await createDirectChat(userId);
-          setActiveChat(chat);
-          startCall(chat.id);
-          setIsNewCallOpen(false);
-          setUserSearchQuery('');
-          setSearchResults([]);
-      } catch (e) {
-          console.error(e);
-          toast.error("Failed to start call");
-      }
+    try {
+      const chat = await createDirectChat(userId);
+      setActiveChat(chat);
+      startCall(chat.id);
+      setIsNewCallOpen(false);
+      setUserSearchQuery('');
+      setSearchResults([]);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to start call");
+    }
   };
 
   const handleCreateGroup = async () => {
@@ -377,87 +377,87 @@ export const ChatList = () => {
       <div className="p-4 border-t border-white/10">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-white">Calls</h3>
-           <Dialog open={isNewCallOpen} onOpenChange={setIsNewCallOpen}>
-              <DialogTrigger asChild>
-                  <button
-                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl messenger-input text-xs text-[#6b7280] hover:text-white transition-colors">
-                    <Video size={12} />
-                    New meet
-                  </button>
-              </DialogTrigger>
-              <DialogContent className="messenger-panel border-white/10">
-                <DialogHeader>
-                  <DialogTitle>Start Call</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                   <Input
-                    placeholder="Search users to call..."
-                    value={userSearchQuery}
-                    onChange={(e) => {
-                      setUserSearchQuery(e.target.value);
-                      searchUsers(e.target.value);
-                    }}
-                    className="messenger-input border-white/10"
-                  />
-                  {isSearching && (
-                    <div className="flex justify-center py-4">
-                      <Loader2 className="animate-spin" />
-                    </div>
-                  )}
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {searchResults.map((u) => (
-                      <div
-                        key={u.id}
-                        onClick={() => handleStartCall(u.id)}
-                        className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"
-                      >
-                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                          {u.avatar ? (
-                            <img src={u.avatar} alt={u.username} className="w-full h-full rounded-full object-cover" />
-                          ) : (
-                            <span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{u.username}</p>
-                           <p className="text-xs text-[#6b7280]">
-                            {u.is_online ? 'Online' : 'Offline'}
-                          </p>
-                        </div>
-                         <div className="p-2 rounded-full bg-primary/20 text-primary">
-                            <Phone size={16} />
-                         </div>
-                      </div>
-                    ))}
+          <Dialog open={isNewCallOpen} onOpenChange={setIsNewCallOpen}>
+            <DialogTrigger asChild>
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl messenger-input text-xs text-[#6b7280] hover:text-white transition-colors">
+                <Video size={12} />
+                New meet
+              </button>
+            </DialogTrigger>
+            <DialogContent className="messenger-panel border-white/10">
+              <DialogHeader>
+                <DialogTitle>Start Call</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <Input
+                  placeholder="Search users to call..."
+                  value={userSearchQuery}
+                  onChange={(e) => {
+                    setUserSearchQuery(e.target.value);
+                    searchUsers(e.target.value);
+                  }}
+                  className="messenger-input border-white/10"
+                />
+                {isSearching && (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="animate-spin" />
                   </div>
+                )}
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {searchResults.map((u) => (
+                    <div
+                      key={u.id}
+                      onClick={() => handleStartCall(u.id)}
+                      className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                        {u.avatar ? (
+                          <img src={u.avatar} alt={u.username} className="w-full h-full rounded-full object-cover" />
+                        ) : (
+                          <span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{u.username}</p>
+                        <p className="text-xs text-[#6b7280]">
+                          {u.is_online ? 'Online' : 'Offline'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-full bg-primary/20 text-primary">
+                        <Phone size={16} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </DialogContent>
-           </Dialog>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
         <div className="space-y-1">
-           {callStatus.isActive && activeCallChat ? (
-               <div
-                   onClick={() => setActiveChat(activeCallChat)}
-                   className="flex items-center gap-3 p-2 rounded-xl bg-green-500/10 border border-green-500/20 cursor-pointer animate-pulse"
-               >
-                   <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white">
-                       <Phone size={16} />
-                   </div>
-                   <div className="flex-1 overflow-hidden">
-                       <p className="text-sm font-medium text-white truncate">{activeCallName}</p>
-                       <p className="text-xs text-green-400">Call in progress...</p>
-                   </div>
-                   {callStatus.isIncoming && (
-                       <button onClick={(e) => { e.stopPropagation(); joinCall(); }} className="px-2 py-1 rounded bg-green-600 text-white text-xs">
-                           Join
-                       </button>
-                   )}
-               </div>
-           ) : (
-               <div className="text-center py-4 text-[#6b7280] text-xs">
-                  No active calls
-               </div>
-           )}
+          {callStatus.isActive && activeCallChat ? (
+            <div
+              onClick={() => setActiveChat(activeCallChat)}
+              className="flex items-center gap-3 p-2 rounded-xl bg-green-500/10 border border-green-500/20 cursor-pointer animate-pulse"
+            >
+              <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white">
+                <Phone size={16} />
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <p className="text-sm font-medium text-white truncate">{activeCallName}</p>
+                <p className="text-xs text-green-400">Call in progress...</p>
+              </div>
+              {callStatus.isIncoming && (
+                <button onClick={(e) => { e.stopPropagation(); joinCall(); }} className="px-2 py-1 rounded bg-green-600 text-white text-xs">
+                  Join
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-4 text-[#6b7280] text-xs">
+              No active calls
+            </div>
+          )}
         </div>
       </div>
     </div>

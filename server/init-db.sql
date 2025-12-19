@@ -9,6 +9,7 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'phase_messenger')\gex
 
 -- Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Then run the schema from init.sql
 -- \i init.sql
