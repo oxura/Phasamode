@@ -47,7 +47,7 @@ export const ShareView = () => {
                     {/* Join Section */}
                     <div className="messenger-card p-6">
                         <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400">
+                            <div className="p-2 bg-primary/15 rounded-lg text-primary">
                                 <Users size={20} />
                             </div>
                             <h3 className="text-lg font-semibold">Join via Invite Code</h3>
@@ -61,12 +61,12 @@ export const ShareView = () => {
                                 onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
                                 placeholder="E.g. AF42KL"
                                 maxLength={6}
-                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-lg font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all uppercase"
+                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-lg font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all uppercase placeholder:text-white/20"
                             />
                             <button
                                 onClick={handleJoin}
                                 disabled={isLoading || inviteCode.length < 6}
-                                className="px-6 bg-primary text-white rounded-xl font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                className="px-6 bg-primary text-white rounded-xl font-medium hover:bg-primary/90 shadow-[0_8px_24px_rgba(0,0,0,0.25)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
                                 {isLoading ? 'Joining...' : 'Join'}
                             </button>
@@ -80,7 +80,7 @@ export const ShareView = () => {
                         </div>
                         <div className="relative z-10">
                             <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
+                                <div className="p-2 bg-primary/15 rounded-lg text-primary">
                                     <Link size={20} />
                                 </div>
                                 <h3 className="text-lg font-semibold">Share Phase</h3>
@@ -94,7 +94,7 @@ export const ShareView = () => {
                                 </span>
                                 <button
                                     onClick={copyAppUrl}
-                                    className="p-2 hover:bg-white/10 rounded-lg transition-all text-primary"
+                                    className="p-2.5 rounded-xl bg-primary/15 text-primary hover:bg-primary/25 transition-all"
                                 >
                                     {copied ? <Check size={20} /> : <Copy size={20} />}
                                 </button>

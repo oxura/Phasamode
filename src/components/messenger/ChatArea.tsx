@@ -151,7 +151,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, isPinned, 
     if (message.message_type === 'audio') {
       return <AudioMessage src={message.file_url || message.content} />;
     }
-    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-words max-w-full overflow-hidden">{message.content}</p>;
+    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-words max-w-full overflow-hidden text-foreground/80">{message.content}</p>;
   };
 
   const handleCopy = () => {
@@ -207,9 +207,9 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, isPinned, 
                 'flex items-center gap-2 mb-1 px-1',
                 isOwn ? 'justify-end' : 'justify-start'
               )}>
-                {!isOwn && <span className="text-[11px] font-bold text-white/80">{senderName}</span>}
-                <span className="text-[10px] text-white/30">{time}</span>
-                {message.edited_at && <span className="text-[10px] text-white/30">edited</span>}
+                {!isOwn && <span className="text-[12px] font-semibold text-white/90">{senderName}</span>}
+                <span className="text-[9px] text-white/20">{time}</span>
+                {message.edited_at && <span className="text-[9px] text-white/20">edited</span>}
               </div>
 
               <div className={cn(
@@ -218,12 +218,12 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, isPinned, 
                 message.message_type === 'image' && 'p-1 bg-transparent border-none'
               )}>
                 {message.forwarded_from && (
-                  <div className="mb-2 text-[10px] text-white/50 uppercase tracking-[0.15em]">
+                  <div className="mb-2 text-[9px] text-white/40 uppercase tracking-[0.18em]">
                     Forwarded from {message.forwarded_from.sender_username || 'Unknown'}
                   </div>
                 )}
                 {message.reply && (
-                  <div className="mb-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
+                  <div className="mb-2 rounded-lg border-l-2 border-primary/60 bg-black/20 px-3 py-2">
                     <div className="text-[10px] text-white/50">
                       Replying to {message.reply.sender_username}
                     </div>
@@ -884,7 +884,10 @@ export const ChatArea = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 md:px-8 2xl:px-12 py-5 md:py-6 messenger-scrollbar relative z-10 scroll-smooth">
+      <div
+        key={activeChat.id}
+        className="flex-1 overflow-y-auto px-4 md:px-8 2xl:px-12 py-5 md:py-6 messenger-scrollbar relative z-10 scroll-smooth animate-in fade-in duration-200"
+      >
         {activeChat.pinned_message && (
           <div className="sticky top-0 z-20 mb-4">
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md px-4 py-2">
@@ -1038,7 +1041,7 @@ export const ChatArea = () => {
             <button
               onClick={handleSend}
               disabled={isSending || !canPost}
-              className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-white transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
+              className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-white transition-all shadow-[0_10px_25px_rgba(0,0,0,0.35)] hover:scale-105 hover:shadow-[0_0_24px_rgba(20,184,166,0.35)] active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
             >
               {isSending ? (
                 <Loader2 size={20} className="animate-spin" />
@@ -1051,8 +1054,8 @@ export const ChatArea = () => {
               onClick={isRecording ? stopRecording : startRecording}
               disabled={!canPost}
               className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed",
-                isRecording ? "bg-red-500 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]" : "bg-primary hover:scale-105"
+                "w-11 h-11 rounded-full flex items-center justify-center text-white transition-all shadow-[0_10px_25px_rgba(0,0,0,0.35)] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed",
+                isRecording ? "bg-red-500 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]" : "bg-primary hover:scale-105 hover:shadow-[0_0_24px_rgba(20,184,166,0.35)]"
               )}
             >
               {isRecording ? <Pause size={20} /> : <Mic size={20} />}

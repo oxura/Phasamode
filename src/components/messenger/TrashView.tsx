@@ -36,7 +36,7 @@ export const TrashView = () => {
     };
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-black/20 backdrop-blur-xl">
+        <div className="flex-1 flex flex-col h-full bg-white/[0.02] backdrop-blur-2xl">
             <div className="p-6 border-b border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <div className="p-2 bg-destructive/20 rounded-lg text-destructive">
@@ -53,28 +53,33 @@ export const TrashView = () => {
                         placeholder="Search trash..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all w-64"
+                        className="pl-10 pr-4 py-2 messenger-input border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all w-64"
                     />
                 </div>
             </div>
 
-            <div className="p-4 bg-orange-500/10 border-b border-orange-500/20 flex items-center gap-3 text-orange-400 text-sm">
-                <AlertCircle size={18} />
-                <p>Messages in trash will be automatically deleted after 30 days.</p>
+            <div className="px-6 py-3 border-b border-white/5 flex items-center gap-3 text-white/40 text-xs">
+                <AlertCircle size={16} className="text-primary/60" />
+                <p>Messages in trash are automatically deleted after 30 days.</p>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
                 {filteredTrash.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
-                            <Trash2 size={40} className="text-muted-foreground" />
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-5">
+                        <div className="relative w-28 h-28">
+                            <div className="absolute inset-0 rounded-full bg-primary/10 blur-2xl" />
+                            <div className="absolute -top-2 right-1 w-10 h-10 rounded-full bg-white/5" />
+                            <div className="absolute bottom-2 left-2 w-6 h-6 rounded-full bg-white/5" />
+                            <div className="relative w-full h-full rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center">
+                                <Trash2 size={36} className="text-white/40" />
+                            </div>
                         </div>
                         <div>
-                            <h3 className="text-lg font-medium">{searchQuery ? 'No matches' : 'Trash is empty'}</h3>
-                            <p className="text-muted-foreground text-sm max-w-[250px]">
+                            <h3 className="text-lg font-semibold">{searchQuery ? 'No matches' : 'All clear. For now.'}</h3>
+                            <p className="text-white/40 text-sm max-w-[260px]">
                                 {searchQuery
                                     ? 'Try a different keyword or clear the search.'
-                                    : 'Deleted messages will stay here for 30 days before being permanently removed.'}
+                                    : 'Deleted messages wait here for 30 days before disappearing forever.'}
                             </p>
                         </div>
                     </div>

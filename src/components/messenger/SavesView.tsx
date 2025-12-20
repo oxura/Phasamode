@@ -24,7 +24,7 @@ export const SavesView = () => {
         : saves;
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-black/20 backdrop-blur-xl">
+        <div className="flex-1 flex flex-col h-full bg-white/[0.02] backdrop-blur-2xl">
             <div className="p-6 border-b border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <div className="p-2 bg-primary/20 rounded-lg text-primary">
@@ -41,23 +41,28 @@ export const SavesView = () => {
                         placeholder="Search saves..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all w-64"
+                        className="pl-10 pr-4 py-2 messenger-input border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all w-64"
                     />
                 </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
                 {filteredSaves.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
-                            <Bookmark size={40} className="text-muted-foreground" />
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-5">
+                        <div className="relative w-28 h-28">
+                            <div className="absolute inset-0 rounded-full bg-primary/10 blur-2xl" />
+                            <div className="absolute -top-2 left-2 w-10 h-10 rounded-full bg-white/5" />
+                            <div className="absolute bottom-2 right-2 w-6 h-6 rounded-full bg-white/5" />
+                            <div className="relative w-full h-full rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center">
+                                <Bookmark size={36} className="text-white/40" />
+                            </div>
                         </div>
                         <div>
-                            <h3 className="text-lg font-medium">{searchQuery ? 'No matches' : 'No saved messages'}</h3>
-                            <p className="text-muted-foreground text-sm max-w-[250px]">
+                            <h3 className="text-lg font-semibold">{searchQuery ? 'No matches' : 'Nothing saved yet'}</h3>
+                            <p className="text-white/40 text-sm max-w-[260px]">
                                 {searchQuery
                                     ? 'Try a different keyword or clear the search.'
-                                    : 'Messages you save will appear here for quick access.'}
+                                    : 'Save messages to keep the good stuff within reach.'}
                             </p>
                         </div>
                     </div>

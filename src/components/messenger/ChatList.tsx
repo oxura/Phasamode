@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Search, Plus, MessageCircle, Loader2, Phone, Video, Megaphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMessenger } from '@/context/MessengerContext';
@@ -69,17 +69,17 @@ const ChatItem = ({ chat, isActive, onClick, displayName, displayAvatar, isOnlin
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm truncate text-white">{displayName}</span>
+          <span className="font-semibold text-sm truncate text-white/90">{displayName}</span>
         </div>
         <p className={cn(
-          "text-xs truncate mt-0.5",
-          isVoiceMessage ? "text-green-500" : "text-[#6b7280]"
+          "text-xs truncate mt-0.5 text-white/55",
+          isVoiceMessage ? "text-primary" : ""
         )}>
           {getMessagePreview()}
         </p>
       </div>
       <div className="flex flex-col items-end gap-1">
-        <span className="text-[10px] text-[#6b7280]">
+        <span className="text-[9px] text-white/30">
           {chat.last_message?.created_at ? formatTime(chat.last_message.created_at) : ''}
         </span>
       </div>
@@ -101,6 +101,8 @@ export const ChatList = () => {
     createDirectChat,
     createGroupChat,
     createChannelChat,
+    searchMessagesGlobal,
+    openMessageContext,
     getChatDisplayName,
     getChatAvatar,
     getOtherUser,
@@ -113,6 +115,12 @@ export const ChatList = () => {
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
   const [isNewChannelOpen, setIsNewChannelOpen] = useState(false);
   const [isNewCallOpen, setIsNewCallOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [searchMode, setSearchMode] = useState<'chats' | 'users' | 'messages'>('chats');
+  const [searchInput, setSearchInput] = useState('');
+  const [panelUserResults, setPanelUserResults] = useState<{ id: string; username: string; avatar: string | null; is_online: boolean }[]>([]);
+  const [panelMessageResults, setPanelMessageResults] = useState<{ id: string; chat_id: string; chat_name: string | null; chat_type?: string; content: string; message_type: string; created_at: string; sender?: { username: string | null } }[]>([]);
+  const [isPanelSearching, setIsPanelSearching] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ id: string; username: string; avatar: string | null; is_online: boolean }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -195,6 +203,71 @@ export const ChatList = () => {
     }
   };
 
+  const getMessagePreview = (message: { content: string; message_type: string }) => {
+    if (message.message_type === 'image') return 'Photo';
+    if (message.message_type === 'video') return 'Video';
+    if (message.message_type === 'audio') return 'Voice message';
+    if (message.message_type === 'file') return 'File';
+    return message.content || 'Message';
+  };
+
+  const runPanelSearch = async (value: string, mode: 'chats' | 'users' | 'messages') => {
+    if (!value.trim()) {
+      setPanelUserResults([]);
+      setPanelMessageResults([]);
+      if (mode === 'chats') setSearchQuery('');
+      return;
+    }
+
+    if (mode === 'chats') {
+      setSearchQuery(value);
+      return;
+    }
+
+    setSearchQuery('');
+    setIsPanelSearching(true);
+    try {
+      if (mode === 'users') {
+        const results = await api.searchUsers(value);
+        setPanelUserResults(results);
+        setPanelMessageResults([]);
+      } else {
+        const results = await searchMessagesGlobal(value);
+        setPanelMessageResults(results);
+        setPanelUserResults([]);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsPanelSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    const handler = () => {
+      setSearchMode('users');
+      setSearchInput('');
+      setSearchQuery('');
+      setPanelUserResults([]);
+      setPanelMessageResults([]);
+      window.setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 0);
+    };
+    window.addEventListener('focus-chat-search', handler);
+    return () => window.removeEventListener('focus-chat-search', handler);
+  }, [setSearchQuery]);
+
+  useEffect(() => {
+    if (!searchInput.trim()) {
+      setPanelUserResults([]);
+      setPanelMessageResults([]);
+      if (searchMode === 'chats') setSearchQuery('');
+      return;
+    }
+    runPanelSearch(searchInput, searchMode);
+  }, [searchMode]);
+
   const handleCreateChannel = async () => {
     if (!channelName.trim()) return;
     try {
@@ -234,19 +307,37 @@ export const ChatList = () => {
   return (
     <div className="w-full md:w-[360px] xl:w-[380px] 2xl:w-[420px] messenger-panel flex flex-col border-r border-white/10 messenger-scrollbar overflow-hidden">
       <div className="p-4">
-        <div className="relative mb-4">
+        <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" size={16} />
           <input
             type="text"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={searchMode === 'chats' ? 'Search chats...' : searchMode === 'users' ? 'Search users...' : 'Search messages...'}
+            value={searchInput}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSearchInput(value);
+              runPanelSearch(value, searchMode);
+            }}
+            ref={searchInputRef}
             className="w-full messenger-input rounded-2xl pl-10 pr-4 py-2.5 text-sm placeholder:text-[#6b7280] focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all text-white"
           />
         </div>
 
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-white">Messages</h2>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-full p-1">
+            {(['chats', 'users', 'messages'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setSearchMode(mode)}
+                className={cn(
+                  'px-3 py-1 text-[11px] font-semibold rounded-full transition-all',
+                  searchMode === mode ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white'
+                )}
+              >
+                {mode === 'chats' ? 'Chats' : mode === 'users' ? 'Users' : 'Messages'}
+              </button>
+            ))}
+          </div>
           <div className="flex gap-1">
             <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
               <DialogTrigger asChild>
@@ -426,45 +517,121 @@ export const ChatList = () => {
           </div>
         </div>
 
-        <div className="flex gap-2 mb-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveChatTab(tab.key)}
-              className={cn(
-                'px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200',
-                activeChatTab === tab.key
-                  ? 'bg-primary text-white'
-                  : 'messenger-input text-[#6b7280] hover:text-white'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {searchMode === 'chats' && (
+          <div className="flex items-center bg-white/5 border border-white/10 rounded-full p-1 w-fit mb-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveChatTab(tab.key)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-200',
+                  activeChatTab === tab.key
+                    ? 'bg-white/10 text-white shadow-sm'
+                    : 'text-white/40 hover:text-white'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 messenger-scrollbar">
-        {isLoadingChats ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="animate-spin text-[#6b7280]" />
-          </div>
-        ) : filteredChats.length === 0 ? (
-          <div className="text-center py-8 text-[#6b7280] text-sm">
-            {chats.length === 0 ? 'No chats yet. Start a new conversation!' : 'No chats found'}
-          </div>
+        {searchMode === 'chats' ? (
+          isLoadingChats ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="animate-spin text-[#6b7280]" />
+            </div>
+          ) : filteredChats.length === 0 ? (
+            <div className="text-center py-8 text-[#6b7280] text-sm">
+              {chats.length === 0 ? 'No chats yet. Start a new conversation!' : 'No chats found'}
+            </div>
+          ) : (
+            filteredChats.map((chat) => (
+              <ChatItem
+                key={chat.id}
+                chat={chat}
+                isActive={activeChat?.id === chat.id}
+                onClick={() => setActiveChat(chat)}
+                displayName={getChatDisplayName(chat)}
+                displayAvatar={getChatAvatar(chat)}
+                isOnline={getIsOnline(chat)}
+              />
+            ))
+          )
+        ) : searchMode === 'users' ? (
+          isPanelSearching ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="animate-spin text-[#6b7280]" />
+            </div>
+          ) : searchInput.trim() === '' ? (
+            <div className="text-center py-8 text-[#6b7280] text-sm">
+              Start typing to search users
+            </div>
+          ) : panelUserResults.length === 0 ? (
+            <div className="text-center py-8 text-[#6b7280] text-sm">
+              No users found
+            </div>
+          ) : (
+            panelUserResults.map((u) => (
+              <div
+                key={u.id}
+                onClick={async () => handleStartDirectChat(u.id)}
+                className="flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-200 hover:bg-white/5"
+              >
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                  <AvatarImage
+                    src={u.avatar}
+                    alt={u.username}
+                    className="w-full h-full"
+                    fallback={<span className="text-white font-semibold text-sm">{u.username.charAt(0).toUpperCase()}</span>}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm text-white truncate">{u.username}</p>
+                  <p className="text-xs text-white/40">{u.is_online ? 'Online' : 'Offline'}</p>
+                </div>
+              </div>
+            ))
+          )
         ) : (
-          filteredChats.map((chat) => (
-            <ChatItem
-              key={chat.id}
-              chat={chat}
-              isActive={activeChat?.id === chat.id}
-              onClick={() => setActiveChat(chat)}
-              displayName={getChatDisplayName(chat)}
-              displayAvatar={getChatAvatar(chat)}
-              isOnline={getIsOnline(chat)}
-            />
-          ))
+          isPanelSearching ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="animate-spin text-[#6b7280]" />
+            </div>
+          ) : searchInput.trim() === '' ? (
+            <div className="text-center py-8 text-[#6b7280] text-sm">
+              Start typing to search messages
+            </div>
+          ) : panelMessageResults.length === 0 ? (
+            <div className="text-center py-8 text-[#6b7280] text-sm">
+              No messages found
+            </div>
+          ) : (
+            panelMessageResults.map((m) => (
+              <button
+                key={m.id}
+                onClick={async () => {
+                  try {
+                    await openMessageContext(m.id);
+                  } catch (e) {
+                    toast.error('Failed to open message');
+                  }
+                }}
+                className="w-full text-left flex flex-col gap-1 p-3 rounded-2xl hover:bg-white/5 transition-all"
+              >
+                <div className="flex items-center justify-between text-[10px] text-white/30">
+                  <span className="truncate">{m.chat_name || (m.chat_type === 'direct' ? 'Direct chat' : 'Chat')}</span>
+                  <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="text-sm text-white/70 truncate">
+                  <span className="text-white/40">{m.sender?.username || 'Unknown'}: </span>
+                  {getMessagePreview(m)}
+                </div>
+              </button>
+            ))
+          )
         )}
       </div>
 

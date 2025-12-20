@@ -1,4 +1,4 @@
-import { Home, Search, Bookmark, Trash2, Share2, Settings, Moon, Sun, LogOut, User, Camera, Loader2, MessageCircle } from 'lucide-react';
+import { Home, Search, Bookmark, Trash2, Share2, Settings, Moon, Sun, LogOut, User, Camera, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useMessenger } from '@/context/MessengerContext';
@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { PhaseLogo } from '@/components/PhaseLogo';
@@ -25,7 +25,7 @@ const NavItem = ({ icon, label, isActive, onClick, showLabel = true }: NavItemPr
   <button
     onClick={onClick}
     className={cn(
-      'flex flex-col items-center gap-1.5 py-3 w-full transition-all duration-200',
+      'flex flex-col items-center gap-1.5 py-3 w-full transition-all duration-200 hover:-translate-y-0.5',
       isActive
         ? 'text-primary'
         : 'text-[#6b7280] hover:text-foreground'
@@ -38,7 +38,7 @@ const NavItem = ({ icon, label, isActive, onClick, showLabel = true }: NavItemPr
 
 export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop' | 'mobile' }) => {
   const { user, logout, updateUser } = useAuth();
-  const { createDirectChat, setActiveChat, activeView, setActiveView, openMessageContext, searchMessagesGlobal } = useMessenger();
+  const { activeView, setActiveView } = useMessenger();
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window === 'undefined') return true;
     const saved = localStorage.getItem('theme');
@@ -48,13 +48,6 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
   });
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<'users' | 'messages'>('users');
-  const [searchResults, setSearchResults] = useState<{ id: string; username: string; avatar: string | null; is_online: boolean }[]>([]);
-  const [messageResults, setMessageResults] = useState<{ id: string; chat_id: string; chat_name: string | null; chat_type?: string; content: string; message_type: string; created_at: string; sender?: { username: string | null } }[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isSearchingMessages, setIsSearchingMessages] = useState(false);
   const [editUsername, setEditUsername] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -73,76 +66,7 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  useEffect(() => {
-    if (isSearchOpen) return;
-    setSearchQuery('');
-    setSearchResults([]);
-    setMessageResults([]);
-    setSearchMode('users');
-  }, [isSearchOpen]);
-
-  const handleSearch = async (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim()) {
-      setSearchResults([]);
-      setMessageResults([]);
-      return;
-    }
-    if (searchMode === 'users') {
-      setMessageResults([]);
-      setIsSearching(true);
-      try {
-        const results = await api.searchUsers(q);
-        setSearchResults(results);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setIsSearching(false);
-      }
-    } else {
-      setSearchResults([]);
-      setIsSearchingMessages(true);
-      try {
-        const results = await searchMessagesGlobal(q);
-        setMessageResults(results);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setIsSearchingMessages(false);
-      }
-    }
-  };
-
-  const getMessagePreview = (message: { content: string; message_type: string }) => {
-    if (message.message_type === 'image') return 'Photo';
-    if (message.message_type === 'video') return 'Video';
-    if (message.message_type === 'audio') return 'Voice message';
-    if (message.message_type === 'file') return 'File';
-    return message.content || 'Message';
-  };
-
-  const handleOpenMessage = async (messageId: string) => {
-    try {
-      await openMessageContext(messageId);
-      setIsSearchOpen(false);
-      setSearchQuery('');
-      setSearchResults([]);
-      setMessageResults([]);
-      toast.success('Message opened');
-    } catch (e) {
-      toast.error('Failed to open message');
-    }
-  };
-
-  useEffect(() => {
-    if (!isSearchOpen) return;
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      setMessageResults([]);
-      return;
-    }
-    handleSearch(searchQuery);
-  }, [searchMode, isSearchOpen, searchQuery]);
+  // Search is handled in the chat list panel.
 
   const handleSaveProfile = async () => {
     if (!editUsername.trim()) return;
@@ -177,7 +101,10 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
 
   const handleNavClick = (label: string) => {
     if (label === 'Home') setActiveView('home');
-    else if (label === 'Search') setIsSearchOpen(true);
+    else if (label === 'Search') {
+      setActiveView('home');
+      window.dispatchEvent(new CustomEvent('focus-chat-search'));
+    }
     else if (label === 'Saves') setActiveView('saves');
     else if (label === 'Trash') setActiveView('trash');
     else if (label === 'Settings') setIsSettingsOpen(true);
@@ -297,11 +224,11 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
           </DialogContent>
         </Dialog>
 
-        <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-          <DialogContent className="messenger-panel border-white/10">
-            <DialogHeader>
-              <DialogTitle>Settings</DialogTitle>
-            </DialogHeader>
+        <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+          <SheetContent className="messenger-panel border-white/10 w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>Settings</SheetTitle>
+            </SheetHeader>
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3 rounded-lg messenger-input border-white/10">
                 <div className="flex items-center gap-3">
@@ -337,109 +264,9 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
                 Logout
               </Button>
             </div>
-          </DialogContent>
-        </Dialog>
+          </SheetContent>
+        </Sheet>
 
-        <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-          <DialogContent className="messenger-panel border-white/10">
-            <DialogHeader>
-              <DialogTitle>Search</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <Input
-                placeholder={searchMode === 'users' ? 'Search users...' : 'Search messages...'}
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                className="messenger-input border-white/10"
-              />
-              <Tabs value={searchMode} onValueChange={(value) => setSearchMode(value as 'users' | 'messages')}>
-                <TabsList className="w-full bg-white/5">
-                  <TabsTrigger value="users" className="flex-1">Users</TabsTrigger>
-                  <TabsTrigger value="messages" className="flex-1">Messages</TabsTrigger>
-                </TabsList>
-                <TabsContent value="users" className="mt-4">
-                  {isSearching && (
-                    <div className="flex justify-center py-4">
-                      <Loader2 className="animate-spin" />
-                    </div>
-                  )}
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {searchResults.map((u) => (
-                      <div
-                        key={u.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                          <AvatarImage
-                            src={u.avatar}
-                            alt={u.username}
-                            className="w-full h-full rounded-full"
-                            fallback={<span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{u.username}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {u.is_online ? <span className="text-green-500">Online</span> : 'Offline'}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={async () => {
-                            try {
-                              const chat = await createDirectChat(u.id);
-                              setActiveChat(chat);
-                              setIsSearchOpen(false);
-                              setSearchQuery('');
-                              setSearchResults([]);
-                              toast.success(`Chat with ${u.username} opened`);
-                            } catch (e) {
-                              toast.error('Failed to create chat');
-                            }
-                          }}
-                        >
-                          <MessageCircle size={16} />
-                        </Button>
-                      </div>
-                    ))}
-                    {!isSearching && searchQuery && searchResults.length === 0 && (
-                      <p className="text-center text-sm text-muted-foreground py-4">No users found</p>
-                    )}
-                  </div>
-                </TabsContent>
-                <TabsContent value="messages" className="mt-4">
-                  {isSearchingMessages && (
-                    <div className="flex justify-center py-4">
-                      <Loader2 className="animate-spin" />
-                    </div>
-                  )}
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {messageResults.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => handleOpenMessage(m.id)}
-                        className="w-full text-left flex flex-col gap-1 p-2 rounded-lg hover:bg-white/5"
-                      >
-                        <div className="flex items-center justify-between text-xs text-white/40">
-                          <span className="truncate">{m.chat_name || (m.chat_type === 'direct' ? 'Direct chat' : 'Chat')}</span>
-                          <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        <div className="text-sm text-white/80 truncate">
-                          <span className="text-white/50">{m.sender?.username || 'Unknown'}: </span>
-                          {getMessagePreview(m)}
-                        </div>
-                      </button>
-                    ))}
-                    {!isSearchingMessages && searchQuery && messageResults.length === 0 && (
-                      <p className="text-center text-sm text-muted-foreground py-4">No messages found</p>
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-          </DialogContent>
-        </Dialog>
       </>
     );
   }
@@ -570,11 +397,11 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="messenger-panel border-white/10">
-          <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
-          </DialogHeader>
+      <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <SheetContent className="messenger-panel border-white/10 w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Settings</SheetTitle>
+          </SheetHeader>
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg messenger-input border-white/10">
               <div className="flex items-center gap-3">
@@ -610,109 +437,9 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
               Logout
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
-      <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-        <DialogContent className="messenger-panel border-white/10">
-          <DialogHeader>
-            <DialogTitle>Search</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Input
-              placeholder={searchMode === 'users' ? 'Search users...' : 'Search messages...'}
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="messenger-input border-white/10"
-            />
-            <Tabs value={searchMode} onValueChange={(value) => setSearchMode(value as 'users' | 'messages')}>
-              <TabsList className="w-full bg-white/5">
-                <TabsTrigger value="users" className="flex-1">Users</TabsTrigger>
-                <TabsTrigger value="messages" className="flex-1">Messages</TabsTrigger>
-              </TabsList>
-              <TabsContent value="users" className="mt-4">
-                {isSearching && (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="animate-spin" />
-                  </div>
-                )}
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {searchResults.map((u) => (
-                    <div
-                      key={u.id}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                        <AvatarImage
-                          src={u.avatar}
-                          alt={u.username}
-                          className="w-full h-full rounded-full"
-                          fallback={<span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{u.username}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {u.is_online ? <span className="text-green-500">Online</span> : 'Offline'}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={async () => {
-                          try {
-                            const chat = await createDirectChat(u.id);
-                            setActiveChat(chat);
-                            setIsSearchOpen(false);
-                            setSearchQuery('');
-                            setSearchResults([]);
-                            toast.success(`Chat with ${u.username} opened`);
-                          } catch (e) {
-                            toast.error('Failed to create chat');
-                          }
-                        }}
-                      >
-                        <MessageCircle size={16} />
-                      </Button>
-                    </div>
-                  ))}
-                  {!isSearching && searchQuery && searchResults.length === 0 && (
-                    <p className="text-center text-sm text-muted-foreground py-4">No users found</p>
-                  )}
-                </div>
-              </TabsContent>
-              <TabsContent value="messages" className="mt-4">
-                {isSearchingMessages && (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="animate-spin" />
-                  </div>
-                )}
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {messageResults.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => handleOpenMessage(m.id)}
-                      className="w-full text-left flex flex-col gap-1 p-2 rounded-lg hover:bg-white/5"
-                    >
-                      <div className="flex items-center justify-between text-xs text-white/40">
-                        <span className="truncate">{m.chat_name || (m.chat_type === 'direct' ? 'Direct chat' : 'Chat')}</span>
-                        <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <div className="text-sm text-white/80 truncate">
-                        <span className="text-white/50">{m.sender?.username || 'Unknown'}: </span>
-                        {getMessagePreview(m)}
-                      </div>
-                    </button>
-                  ))}
-                  {!isSearchingMessages && searchQuery && messageResults.length === 0 && (
-                    <p className="text-center text-sm text-muted-foreground py-4">No messages found</p>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 };

@@ -10,7 +10,7 @@
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 221 83% 53%;
+    --primary: 174 78% 40%;
     --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 240 10% 3.9%;
@@ -26,15 +26,15 @@
     --radius: 1rem;
 
     --messenger-bg: 210 40% 98%;
-    --messenger-sidebar: 0 0% 100%;
+    --messenger-sidebar: 210 28% 98%;
     --messenger-card: 0 0% 100%;
-    --messenger-card-hover: 210 40% 96%;
-    --messenger-active: 221 83% 53%;
+    --messenger-card-hover: 210 32% 95%;
+    --messenger-active: 174 78% 40%;
     --messenger-online: 142 72% 45%;
-    --messenger-bubble-sent: 221 83% 95%;
+    --messenger-bubble-sent: 174 80% 94%;
     --messenger-bubble-received: 0 0% 100%;
     --messenger-voice: 221 83% 96%;
-    --messenger-bg-pattern-opacity: 0.04;
+    --messenger-bg-pattern-opacity: 0.06;
   }
 
   .dark {
@@ -44,7 +44,7 @@
     --card-foreground: 0 0% 98%;
     --popover: 240 10% 4.5%;
     --popover-foreground: 0 0% 98%;
-    --primary: 215 100% 50%;
+    --primary: 174 85% 50%;
     --primary-foreground: 0 0% 100%;
     --secondary: 240 4% 10%;
     --secondary-foreground: 0 0% 98%;
@@ -59,15 +59,15 @@
     --ring: 215 100% 50%;
 
     --messenger-bg: 240 8% 6%;
-    --messenger-sidebar: 240 8% 9%;
-    --messenger-card: 240 8% 8%;
-    --messenger-card-hover: 240 8% 12%;
-    --messenger-active: 215 100% 50%;
+    --messenger-sidebar: 240 8% 11%;
+    --messenger-card: 240 8% 9%;
+    --messenger-card-hover: 240 8% 13%;
+    --messenger-active: 174 85% 50%;
     --messenger-online: 142 72% 45%;
-    --messenger-bubble-sent: 215 100% 18%;
+    --messenger-bubble-sent: 174 80% 20%;
     --messenger-bubble-received: 240 6% 14%;
     --messenger-voice: 240 6% 14%;
-    --messenger-bg-pattern-opacity: 0.03;
+    --messenger-bg-pattern-opacity: 0.05;
   }
 }
 
@@ -115,7 +115,7 @@
 }
 
 .messenger-panel {
-  @apply bg-messenger-sidebar/70 backdrop-blur-3xl border-border/60;
+  @apply bg-messenger-sidebar/60 backdrop-blur-2xl border-border/50 shadow-[0_12px_40px_rgba(0,0,0,0.25)];
 }
 
 .messenger-input {
@@ -145,20 +145,20 @@
 .messenger-chat::after {
   content: "";
   @apply absolute inset-0 pointer-events-none;
-  background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.05) 0%, transparent 70%),
-              radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.02) 0%, transparent 50%);
+  background: radial-gradient(circle at 50% 0%, rgba(20, 184, 166, 0.08) 0%, transparent 70%),
+              radial-gradient(circle at 100% 100%, rgba(20, 184, 166, 0.03) 0%, transparent 50%);
 }
 
 .messenger-scrollbar::-webkit-scrollbar {
-  width: 5px;
+  width: 4px;
 }
 .messenger-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .messenger-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-white/10 rounded-full;
+  @apply bg-white/0 rounded-full transition-colors;
 }
-.messenger-scrollbar::-webkit-scrollbar-thumb:hover {
+.messenger-scrollbar:hover::-webkit-scrollbar-thumb {
   @apply bg-white/20;
 }
 
@@ -171,11 +171,11 @@
 }
 
 .capsule-input {
-  @apply flex items-center gap-2 bg-[#1a1a24]/80 backdrop-blur-md border border-white/10 rounded-full px-4 py-2 shadow-2xl;
+  @apply flex items-center gap-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl px-5 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.35)];
 }
 
 .message-bubble {
-  @apply relative inline-flex flex-col p-3 rounded-xl w-fit transition-all max-w-[70%] md:max-w-[65%] 2xl:max-w-[55%] min-w-[36px] overflow-hidden;
+  @apply relative inline-flex flex-col p-3 rounded-2xl w-fit transition-all max-w-[70%] md:max-w-[65%] 2xl:max-w-[55%] min-w-[36px] overflow-hidden;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
