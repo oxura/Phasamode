@@ -3,6 +3,7 @@ import { useMessenger } from '@/context/MessengerContext';
 import { Trash2, Search, RotateCcw, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { AvatarImage } from '@/components/AvatarImage';
 
 export const TrashView = () => {
     const { trash, fetchTrash, restoreMessage, permanentDeleteMessage } = useMessenger();
@@ -82,12 +83,13 @@ export const TrashView = () => {
                         {filteredTrash.map((msg) => (
                             <div key={msg.id} className="messenger-card group border-destructive/10">
                                 <div className="flex items-start gap-4 p-4">
-                                    <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0 flex items-center justify-center">
-                                        {msg.sender?.avatar ? (
-                                            <img src={msg.sender.avatar} className="w-full h-full rounded-full object-cover opacity-50" />
-                                        ) : (
-                                            <span className="text-muted-foreground font-bold">{msg.sender?.username?.charAt(0).toUpperCase()}</span>
-                                        )}
+                                    <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                        <AvatarImage
+                                            src={msg.sender?.avatar}
+                                            alt={msg.sender?.username || 'User'}
+                                            className="w-full h-full rounded-full opacity-50"
+                                            fallback={<span className="text-muted-foreground font-bold">{msg.sender?.username?.charAt(0).toUpperCase()}</span>}
+                                        />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-1">

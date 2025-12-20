@@ -3,6 +3,7 @@ import { useMessenger } from '@/context/MessengerContext';
 import { Bookmark, Search, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { AvatarImage } from '@/components/AvatarImage';
 
 export const SavesView = () => {
     const { saves, fetchSaves, unsaveMessage } = useMessenger();
@@ -65,12 +66,13 @@ export const SavesView = () => {
                         {filteredSaves.map((msg) => (
                             <div key={msg.id} className="messenger-card group animate-in fade-in slide-in-from-bottom-2 duration-300">
                                 <div className="flex items-start gap-4 p-4">
-                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center">
-                                        {msg.sender?.avatar ? (
-                                            <img src={msg.sender.avatar} className="w-full h-full rounded-full object-cover" />
-                                        ) : (
-                                            <span className="text-primary font-bold">{msg.sender?.username?.charAt(0).toUpperCase()}</span>
-                                        )}
+                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                        <AvatarImage
+                                            src={msg.sender?.avatar}
+                                            alt={msg.sender?.username || 'User'}
+                                            className="w-full h-full rounded-full"
+                                            fallback={<span className="text-primary font-bold">{msg.sender?.username?.charAt(0).toUpperCase()}</span>}
+                                        />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-1">

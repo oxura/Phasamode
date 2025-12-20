@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useMessenger } from '@/context/MessengerContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
+import { AvatarImage } from '@/components/AvatarImage';
 
 type MediaTab = 'media' | 'files' | 'voice' | 'links';
 
@@ -83,11 +84,12 @@ export const GroupInfo = () => {
       <div className="p-4">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-14 h-14 rounded-full overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-            {displayAvatar ? (
-              <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-white font-bold text-xl">{displayName.charAt(0).toUpperCase()}</span>
-            )}
+            <AvatarImage
+              src={displayAvatar}
+              alt={displayName}
+              className="w-full h-full"
+              fallback={<span className="text-white font-bold text-xl">{displayName.charAt(0).toUpperCase()}</span>}
+            />
           </div>
           <div>
             <h4 className="font-semibold text-white">{displayName}</h4>
@@ -184,11 +186,12 @@ export const GroupInfo = () => {
                   key={member.id}
                   className="w-6 h-6 rounded-full overflow-hidden border border-transparent bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center"
                 >
-                  {member.avatar ? (
-                    <img src={member.avatar} alt={member.username} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-white text-[10px]">{member.username.charAt(0).toUpperCase()}</span>
-                  )}
+                  <AvatarImage
+                    src={member.avatar}
+                    alt={member.username}
+                    className="w-full h-full"
+                    fallback={<span className="text-white text-[10px]">{member.username.charAt(0).toUpperCase()}</span>}
+                  />
                 </div>
               ))}
               {activeChat.members.length > 4 && (

@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { AvatarImage } from '@/components/AvatarImage';
 
 interface MessageBubbleProps {
   message: {
@@ -145,7 +146,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
     if (message.message_type === 'audio') {
       return <AudioMessage src={message.file_url || message.content} />;
     }
-    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-normal">{message.content}</p>;
+    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-words">{message.content}</p>;
   };
 
   const handleCopy = () => {
@@ -181,13 +182,16 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
           )}>
             {!isOwn && (
               <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 ring-1 ring-white/10 mt-auto">
-                {senderAvatar ? (
-                  <img src={senderAvatar} alt={senderName} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                    <span className="text-white text-[10px] font-bold">{senderName.charAt(0).toUpperCase()}</span>
-                  </div>
-                )}
+                <AvatarImage
+                  src={senderAvatar}
+                  alt={senderName}
+                  className="w-full h-full"
+                  fallback={(
+                    <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                      <span className="text-white text-[10px] font-bold">{senderName.charAt(0).toUpperCase()}</span>
+                    </div>
+                  )}
+                />
               </div>
             )}
             <div className={cn('flex flex-col', isOwn ? 'items-end' : 'items-start')}>
@@ -242,7 +246,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
 
                 <div className={cn(
                   'absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-all duration-200 flex gap-2',
-                  isOwn ? '-left-20 flex-row-reverse' : '-right-20'
+                  isOwn ? '-left-28 flex-row-reverse' : '-right-28'
                 )}>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -672,13 +676,16 @@ export const ChatArea = () => {
             <div className="relative mb-12">
               <div className="absolute inset-0 bg-primary/20 blur-[100px] animate-pulse rounded-full" />
               <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-white/10 p-1">
-                {displayAvatar ? (
-                  <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover rounded-full" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center rounded-full">
-                    <span className="text-white text-5xl font-bold">{displayName.charAt(0).toUpperCase()}</span>
-                  </div>
-                )}
+                <AvatarImage
+                  src={displayAvatar}
+                  alt={displayName}
+                  className="w-full h-full rounded-full"
+                  fallback={(
+                    <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center rounded-full">
+                      <span className="text-white text-5xl font-bold">{displayName.charAt(0).toUpperCase()}</span>
+                    </div>
+                  )}
+                />
               </div>
             </div>
           )}
@@ -719,11 +726,12 @@ export const ChatArea = () => {
           )}
           <div className="relative">
             <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center ring-2 ring-white/5 group-hover:ring-primary/50 transition-all">
-              {displayAvatar ? (
-                <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-white text-xl font-bold">{displayName.charAt(0).toUpperCase()}</span>
-              )}
+              <AvatarImage
+                src={displayAvatar}
+                alt={displayName}
+                className="w-full h-full"
+                fallback={<span className="text-white text-xl font-bold">{displayName.charAt(0).toUpperCase()}</span>}
+              />
             </div>
           </div>
           <div className="flex flex-col">

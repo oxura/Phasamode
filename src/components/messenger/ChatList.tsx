@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { AvatarImage } from '@/components/AvatarImage';
 
 type ChatTab = 'all' | 'groups' | 'contacts';
 
@@ -54,11 +55,12 @@ const ChatItem = ({ chat, isActive, onClick, displayName, displayAvatar, isOnlin
     >
       <div className="relative">
         <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-          {displayAvatar ? (
-            <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-white font-semibold text-lg">{displayName.charAt(0).toUpperCase()}</span>
-          )}
+          <AvatarImage
+            src={displayAvatar}
+            alt={displayName}
+            className="w-full h-full"
+            fallback={<span className="text-white font-semibold text-lg">{displayName.charAt(0).toUpperCase()}</span>}
+          />
         </div>
         {isOnline && (
           <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-transparent" />
@@ -251,11 +253,12 @@ export const ChatList = () => {
                         className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"
                       >
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                          {u.avatar ? (
-                            <img src={u.avatar} alt={u.username} className="w-full h-full rounded-full object-cover" />
-                          ) : (
-                            <span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>
-                          )}
+                          <AvatarImage
+                            src={u.avatar}
+                            alt={u.username}
+                            className="w-full h-full rounded-full"
+                            fallback={<span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>}
+                          />
                         </div>
                         <div className="flex-1">
                           <p className="font-medium text-sm">{u.username}</p>
@@ -315,11 +318,12 @@ export const ChatList = () => {
                         )}
                       >
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                          {u.avatar ? (
-                            <img src={u.avatar} alt={u.username} className="w-full h-full rounded-full object-cover" />
-                          ) : (
-                            <span className="text-white text-sm">{u.username.charAt(0).toUpperCase()}</span>
-                          )}
+                          <AvatarImage
+                            src={u.avatar}
+                            alt={u.username}
+                            className="w-full h-full rounded-full"
+                            fallback={<span className="text-white text-sm">{u.username.charAt(0).toUpperCase()}</span>}
+                          />
                         </div>
                         <span className="text-sm">{u.username}</span>
                       </div>
@@ -414,11 +418,12 @@ export const ChatList = () => {
                       className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"
                     >
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                        {u.avatar ? (
-                          <img src={u.avatar} alt={u.username} className="w-full h-full rounded-full object-cover" />
-                        ) : (
-                          <span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>
-                        )}
+                        <AvatarImage
+                          src={u.avatar}
+                          alt={u.username}
+                          className="w-full h-full rounded-full"
+                          fallback={<span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>}
+                        />
                       </div>
                       <div className="flex-1">
                         <p className="font-medium text-sm">{u.username}</p>

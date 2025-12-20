@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { PhaseLogo } from '@/components/PhaseLogo';
+import { AvatarImage } from '@/components/AvatarImage';
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -159,11 +160,12 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
             onClick={() => setIsProfileOpen(true)}
             className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-orange-500 bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center"
           >
-            {user?.avatar ? (
-              <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-white font-semibold text-xs">{user?.username?.charAt(0).toUpperCase() || 'U'}</span>
-            )}
+            <AvatarImage
+              src={user?.avatar}
+              alt={user?.username || 'User'}
+              className="w-full h-full"
+              fallback={<span className="text-white font-semibold text-xs">{user?.username?.charAt(0).toUpperCase() || 'U'}</span>}
+            />
           </button>
         </div>
 
@@ -304,11 +306,12 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
                     className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer"
                   >
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                      {u.avatar ? (
-                        <img src={u.avatar} alt={u.username} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        <span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>
-                      )}
+                      <AvatarImage
+                        src={u.avatar}
+                        alt={u.username}
+                        className="w-full h-full rounded-full"
+                        fallback={<span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>}
+                      />
                     </div>
                     <div className="flex-1">
                       <p className="font-medium text-sm">{u.username}</p>
@@ -394,11 +397,12 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
             onClick={() => setIsProfileOpen(true)}
             className="w-10 h-10 rounded-full overflow-hidden mt-2 ring-2 ring-orange-500 transition-all cursor-pointer bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center"
           >
-            {user?.avatar ? (
-              <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-white font-semibold">{user?.username?.charAt(0).toUpperCase() || 'U'}</span>
-            )}
+            <AvatarImage
+              src={user?.avatar}
+              alt={user?.username || 'User'}
+              className="w-full h-full"
+              fallback={<span className="text-white font-semibold">{user?.username?.charAt(0).toUpperCase() || 'U'}</span>}
+            />
           </button>
         </div>
       </div>
@@ -539,11 +543,12 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer"
                 >
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    {u.avatar ? (
-                      <img src={u.avatar} alt={u.username} className="w-full h-full rounded-full object-cover" />
-                    ) : (
-                      <span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>
-                    )}
+                    <AvatarImage
+                      src={u.avatar}
+                      alt={u.username}
+                      className="w-full h-full rounded-full"
+                      fallback={<span className="text-white font-semibold">{u.username.charAt(0).toUpperCase()}</span>}
+                    />
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-sm">{u.username}</p>

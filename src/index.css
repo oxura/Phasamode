@@ -176,6 +176,8 @@
 
 .message-bubble {
   @apply relative inline-flex flex-col p-3 rounded-xl max-w-[75%] w-fit transition-all;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .message-bubble-mine {
