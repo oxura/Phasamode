@@ -175,15 +175,23 @@
 }
 
 .message-bubble {
-  @apply relative inline-flex flex-col p-3 rounded-2xl transition-all max-w-[70%] md:max-w-[65%] 2xl:max-w-[55%] min-w-[40px];
+  @apply relative inline-block p-2.5 rounded-[16px] transition-all max-w-[70%] md:max-w-[62%] 2xl:max-w-[54%] min-w-[44px];
   overflow-wrap: break-word;
-  word-break: normal;
+  word-break: keep-all;
+  line-height: 1.35;
 }
 
 .message-bubble-mine {
-  @apply bg-messenger-bubble-sent border border-primary/20 rounded-tr-none text-foreground;
+  @apply bg-messenger-bubble-sent border border-primary/15 rounded-br-sm text-foreground;
 }
 
 .message-bubble-other {
-  @apply bg-messenger-bubble-received border border-border/50 rounded-tl-none text-foreground;
+  @apply bg-messenger-bubble-received border border-border/50 rounded-bl-sm text-foreground;
+}
+
+.message-text {
+  @apply text-[13px] text-foreground/80;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: keep-all;
 }

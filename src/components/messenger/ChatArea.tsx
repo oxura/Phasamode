@@ -151,7 +151,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, isPinned, 
     if (message.message_type === 'audio') {
       return <AudioMessage src={message.file_url || message.content} />;
     }
-    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-words max-w-full overflow-hidden text-foreground/80">{message.content}</p>;
+    return <p className="message-text">{message.content}</p>;
   };
 
   const handleCopy = () => {
@@ -258,8 +258,8 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, isPinned, 
                 )}
 
                 <div className={cn(
-                  'absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-all duration-200 flex gap-2',
-                  isOwn ? '-left-40 flex-row-reverse' : '-right-40'
+                  'absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-all duration-200 flex gap-2 pointer-events-auto',
+                  isOwn ? '-left-28 flex-row-reverse' : '-right-28'
                 )}>
                   <Popover>
                     <PopoverTrigger asChild>
