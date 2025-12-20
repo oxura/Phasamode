@@ -26,6 +26,7 @@ interface Message {
   updated_at?: string;
   reply_to?: string | null;
   reply?: { id: string; content: string; sender_id: string; sender_username: string } | null;
+  forwarded_from?: { message_id: string; chat_id: string; chat_name: string | null; sender_id: string; sender_username: string | null } | null;
   sender?: User;
   reactions?: { emoji: string; user_id: string; username: string }[];
   is_saved?: boolean;
@@ -36,8 +37,10 @@ interface Chat {
   id: string;
   name: string | null;
   is_group: boolean;
+  chat_type?: 'direct' | 'group' | 'channel';
   avatar: string | null;
   description: string | null;
+  pinned_message?: { id: string; content: string; created_at: string; sender_id: string; sender_username: string | null; message_type?: string } | null;
   muted?: boolean;
   role?: string;
   members: User[];
@@ -54,7 +57,7 @@ interface CallStatus {
   incomingOffer?: RTCSessionDescriptionInit;
 }
 
-type ChatTab = 'all' | 'groups' | 'contacts';
+type ChatTab = 'all' | 'groups' | 'channels' | 'contacts';
 type MessengerView = 'home' | 'saves' | 'trash' | 'settings' | 'share';
 
 interface MessengerContextType {
@@ -81,8 +84,12 @@ interface MessengerContextType {
   setActiveView: (view: MessengerView) => void;
   setSearchQuery: (query: string) => void;
   sendMessage: (content: string, type?: string, fileUrl?: string, fileName?: string, fileSize?: number, replyTo?: string | null) => Promise<void>;
+  forwardMessage: (messageId: string, chatId: string) => Promise<void>;
+  pinMessage: (chatId: string, messageId?: string | null) => Promise<void>;
+  openMessageContext: (messageId: string) => Promise<void>;
   createDirectChat: (userId: string) => Promise<Chat>;
   createGroupChat: (name: string, memberIds: string[]) => Promise<Chat>;
+  createChannelChat: (name: string, memberIds: string[]) => Promise<Chat>;
   refreshChats: () => Promise<void>;
   getChatDisplayName: (chat: Chat) => string;
   getChatAvatar: (chat: Chat) => string | null;
@@ -100,6 +107,7 @@ interface MessengerContextType {
   muteChat: (chatId: string, muted: boolean) => Promise<void>;
   deleteMessages: (chatId: string) => Promise<void>;
   searchMessages: (chatId: string, q: string) => Promise<void>;
+  searchMessagesGlobal: (q: string) => Promise<Message[]>;
   createInvite: (chatId: string) => Promise<{ code: string }>;
   fetchSaves: () => Promise<void>;
   fetchTrash: () => Promise<void>;
@@ -341,6 +349,16 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
         }
         break;
       }
+      case 'chat_pinned': {
+        const { chatId, pinnedMessage } = message.payload as { chatId: string; pinnedMessage: Message | null };
+        setChats(prev => prev.map(chat => (
+          chat.id === chatId ? { ...chat, pinned_message: pinnedMessage } : chat
+        )));
+        if (activeChat?.id === chatId) {
+          setActiveChat(prev => prev ? { ...prev, pinned_message: pinnedMessage } : prev);
+        }
+        break;
+      }
     }
   }, [activeChat?.id, user?.id, cleanupCall]);
 
@@ -456,6 +474,58 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const forwardMessage = async (messageId: string, chatId: string) => {
+    try {
+      await api.forwardMessage(messageId, chatId);
+    } catch (e) {
+      console.error('Failed to forward message:', e);
+      throw e;
+    }
+  };
+
+  const pinMessage = async (chatId: string, messageId?: string | null) => {
+    try {
+      const result = await api.pinMessage(chatId, messageId || null);
+      setChats(prev => prev.map(c => c.id === chatId ? { ...c, pinned_message: result.pinnedMessage } : c));
+      if (activeChat?.id === chatId) {
+        setActiveChat(prev => prev ? { ...prev, pinned_message: result.pinnedMessage } : prev);
+      }
+    } catch (e) {
+      console.error('Failed to pin message:', e);
+      throw e;
+    }
+  };
+
+  const openMessageContext = async (messageId: string) => {
+    try {
+      const data = await api.getMessageContext(messageId);
+      let chat = chats.find(c => c.id === data.chatId) || null;
+      if (!chat) {
+        try {
+          const fetched = await api.getChat(data.chatId);
+          chat = fetched;
+          setChats(prev => (prev.some(c => c.id === fetched.id) ? prev : [fetched, ...prev]));
+        } catch {
+          await refreshChats();
+          chat = chats.find(c => c.id === data.chatId) || null;
+        }
+      }
+      if (chat) {
+        setActiveChat(chat);
+      }
+      setMessages(data.messages);
+      loadedChatIdRef.current = data.chatId;
+      loadingChatIdRef.current = null;
+      setTimeout(() => {
+        const el = document.getElementById(`message-${messageId}`);
+        if (el) el.scrollIntoView({ block: 'center' });
+      }, 60);
+    } catch (e) {
+      console.error('Failed to open message context:', e);
+      throw e;
+    }
+  };
+
   const createDirectChat = async (userId: string) => {
     const chat = await createDirectChatApi(userId);
     setChats(prev => {
@@ -475,19 +545,27 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     return chat;
   };
 
+  const createChannelChat = async (name: string, memberIds: string[]) => {
+    const chat = await api.createChat({ name, chatType: 'channel', memberIds, isGroup: true });
+    setChats(prev => [chat, ...prev]);
+    return chat;
+  };
+
   const getOtherUser = (chat: Chat): User | null => {
-    if (chat.is_group || !user) return null;
+    const isDirect = chat.chat_type ? chat.chat_type === 'direct' : !chat.is_group;
+    if (!isDirect || !user) return null;
     return chat.members.find(m => m.id !== user.id) || null;
   };
 
   const getChatDisplayName = (chat: Chat): string => {
-    if (chat.is_group) return chat.name || 'Group Chat';
+    if (chat.chat_type === 'channel') return chat.name || 'Channel';
+    if (chat.is_group || chat.chat_type === 'group') return chat.name || 'Group Chat';
     const other = getOtherUser(chat);
     return other?.username || 'Unknown';
   };
 
   const getChatAvatar = (chat: Chat): string | null => {
-    if (chat.is_group) return chat.avatar;
+    if (chat.is_group || chat.chat_type === 'group' || chat.chat_type === 'channel') return chat.avatar;
     const other = getOtherUser(chat);
     return other?.avatar || null;
   };
@@ -633,6 +711,10 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const searchMessagesGlobal = async (q: string) => {
+    return await api.searchMessagesGlobal(q);
+  };
+
   const createInvite = async (chatId: string) => {
     return await api.createInvite(chatId);
   };
@@ -736,8 +818,12 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       setActiveView,
       setSearchQuery,
       sendMessage,
+      forwardMessage,
+      pinMessage,
+      openMessageContext,
       createDirectChat,
       createGroupChat,
+      createChannelChat,
       refreshChats,
       getChatDisplayName,
       getChatAvatar,
@@ -755,6 +841,7 @@ export const MessengerProvider = ({ children }: { children: ReactNode }) => {
       muteChat,
       deleteMessages,
       searchMessages,
+      searchMessagesGlobal,
       createInvite,
       fetchSaves,
       fetchTrash,

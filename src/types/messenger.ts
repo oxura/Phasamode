@@ -17,6 +17,7 @@ export interface Message {
   edited_at?: string | null;
   reply_to?: string | null;
   reply?: { id: string; content: string; sender_id: string; sender_username: string } | null;
+  forwarded_from?: { message_id: string; chat_id: string; chat_name: string | null; sender_id: string; sender_username: string | null } | null;
   sender?: User;
 }
 
@@ -24,8 +25,10 @@ export interface Chat {
   id: string;
   name: string | null;
   is_group: boolean;
+  chat_type?: 'direct' | 'group' | 'channel';
   avatar: string | null;
   description: string | null;
+  pinned_message?: { id: string; content: string; created_at: string; sender_id: string; sender_username: string | null; message_type?: string } | null;
   members: User[];
   last_message: {
     id: string;
@@ -37,4 +40,4 @@ export interface Chat {
   updated_at?: string;
 }
 
-export type ChatTab = 'all' | 'groups' | 'contacts';
+export type ChatTab = 'all' | 'groups' | 'channels' | 'contacts';

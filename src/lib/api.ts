@@ -92,7 +92,7 @@ export const api = {
     return res.json();
   },
 
-  async createChat(data: { name?: string; isGroup?: boolean; memberIds?: string[]; avatar?: string; description?: string }) {
+  async createChat(data: { name?: string; isGroup?: boolean; chatType?: 'direct' | 'group' | 'channel'; memberIds?: string[]; avatar?: string; description?: string }) {
     const res = await fetch(`${API_URL}/api/chats`, {
       method: 'POST',
       credentials: 'include',
@@ -242,6 +242,50 @@ export const api = {
 
   async joinInvite(code: string) {
     const res = await fetch(`${API_URL}/api/invites/${code}/join`, { headers: headers(), credentials: 'include' });
+    return res.json();
+  },
+
+  async searchMessagesGlobal(q: string) {
+    const res = await fetch(`${API_URL}/api/search/messages?q=${encodeURIComponent(q)}`, {
+      credentials: 'include',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async forwardMessage(messageId: string, chatId: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/forward`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: headers(),
+      body: JSON.stringify({ chatId }),
+    });
+    return res.json();
+  },
+
+  async pinMessage(chatId: string, messageId?: string | null) {
+    const res = await fetch(`${API_URL}/api/chats/${chatId}/pin`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: headers(),
+      body: JSON.stringify({ messageId }),
+    });
+    return res.json();
+  },
+
+  async getMessageContext(messageId: string) {
+    const res = await fetch(`${API_URL}/api/messages/${messageId}/context`, {
+      credentials: 'include',
+      headers: headers(),
+    });
+    return res.json();
+  },
+
+  async getChat(chatId: string) {
+    const res = await fetch(`${API_URL}/api/chats/${chatId}`, {
+      credentials: 'include',
+      headers: headers(),
+    });
     return res.json();
   },
 

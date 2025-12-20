@@ -86,6 +86,7 @@ const LoginSchema = z.object({
 const CreateChatSchema = z.object({
   name: z.string().max(100).optional(),
   isGroup: z.boolean().optional(),
+  chatType: z.enum(['direct', 'group', 'channel']).optional(),
   memberIds: z.array(z.string().uuid()).optional(),
   avatar: z.string().url().optional().or(z.literal('')),
   description: z.string().max(500).optional(),
@@ -230,6 +231,41 @@ const broadcastToChat = async (chatId, message, excludeUserId = null) => {
   });
 };
 
+const getMessageWithMeta = async (messageId, userId) => {
+  const result = await pool.query(
+    `SELECT m.*,
+      json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+      CASE
+        WHEN rm.id IS NULL THEN NULL
+        ELSE json_build_object('id', rm.id, 'content', rm.content, 'sender_id', rm.sender_id, 'sender_username', ru.username)
+      END as reply,
+      CASE
+        WHEN m.forwarded_from_message_id IS NULL THEN NULL
+        ELSE json_build_object('message_id', m.forwarded_from_message_id, 'chat_id', m.forwarded_from_chat_id, 'chat_name', fc.name, 'sender_id', m.forwarded_from_user_id, 'sender_username', fu.username)
+      END as forwarded_from,
+      COALESCE(
+        (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru2.username))
+           FROM reactions r
+           JOIN users ru2 ON r.user_id = ru2.id
+           WHERE r.message_id = m.id),
+      '[]'
+    ) as reactions,
+      EXISTS(SELECT 1 FROM saved_messages sm WHERE sm.message_id = m.id AND sm.user_id = $1) as is_saved
+    FROM messages m
+    LEFT JOIN users u ON m.sender_id = u.id
+    LEFT JOIN messages rm ON m.reply_to = rm.id
+    LEFT JOIN users ru ON rm.sender_id = ru.id
+    LEFT JOIN users fu ON m.forwarded_from_user_id = fu.id
+    LEFT JOIN chats fc ON m.forwarded_from_chat_id = fc.id
+    WHERE m.id = $2 AND m.deleted_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+    )`,
+    [userId, messageId]
+  );
+  return result.rows[0];
+};
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get('token') || getAuthToken(req);
@@ -314,15 +350,19 @@ const handleWSMessage = async (ws, message) => {
       const { chatId, targetUserId } = payload;
       if (chatId && !(await isChatMember(chatId, ws.userId))) break;
       if (targetUserId && clients.has(targetUserId)) {
-        const client = clients.get(targetUserId);
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            type: type,
-            payload: {
-              ...payload,
-              senderId: ws.userId
+        const clientSet = clients.get(targetUserId);
+        if (clientSet instanceof Set) {
+          clientSet.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: type,
+                payload: {
+                  ...payload,
+                  senderId: ws.userId
+                }
+              }));
             }
-          }));
+          });
         }
       } else if (chatId) {
         broadcastToChat(chatId, { type: type, payload: { ...payload, senderId: ws.userId } }, ws.userId);
@@ -462,7 +502,11 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
          AND NOT EXISTS (
            SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
          )
-         ORDER BY m.created_at DESC LIMIT 1) as last_message
+         ORDER BY m.created_at DESC LIMIT 1) as last_message,
+        (SELECT json_build_object('id', pm.id, 'content', pm.content, 'created_at', pm.created_at, 'sender_id', pm.sender_id, 'sender_username', pu.username, 'message_type', pm.message_type)
+         FROM messages pm
+         JOIN users pu ON pm.sender_id = pu.id
+         WHERE pm.id = c.pinned_message_id) as pinned_message
       FROM chats c
       JOIN chat_members cm ON c.id = cm.chat_id
       WHERE cm.user_id = $1
@@ -478,17 +522,19 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
 
 app.post('/api/chats', authenticateToken, async (req, res) => {
   try {
-    const { name, isGroup, memberIds, avatar, description } = CreateChatSchema.parse(req.body);
+    const { name, isGroup, chatType, memberIds, avatar, description } = CreateChatSchema.parse(req.body);
+    const normalizedType = chatType || (isGroup ? 'group' : 'direct');
+    const isGroupFlag = normalizedType !== 'direct';
 
     const chatResult = await pool.query(
-      'INSERT INTO chats (name, is_group, avatar, description, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name, isGroup || false, avatar, description, req.user.id]
+      'INSERT INTO chats (name, is_group, chat_type, avatar, description, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [name, isGroupFlag, normalizedType, avatar, description, req.user.id]
     );
     const chat = chatResult.rows[0];
 
     await pool.query(
       'INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3)',
-      [chat.id, req.user.id, 'admin']
+      [chat.id, req.user.id, normalizedType === 'direct' ? 'member' : 'owner']
     );
 
     if (memberIds && memberIds.length > 0) {
@@ -509,7 +555,11 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
            JOIN users u ON cm2.user_id = u.id 
            WHERE cm2.chat_id = c.id),
           '[]'
-        ) as members
+        ) as members,
+        (SELECT json_build_object('id', pm.id, 'content', pm.content, 'created_at', pm.created_at, 'sender_id', pm.sender_id, 'sender_username', pu.username, 'message_type', pm.message_type)
+         FROM messages pm
+         JOIN users pu ON pm.sender_id = pu.id
+         WHERE pm.id = c.pinned_message_id) as pinned_message
       FROM chats c 
       LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $2
       WHERE c.id = $1`,
@@ -548,7 +598,11 @@ AND(SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2`,
              JOIN users u ON cm2.user_id = u.id 
              WHERE cm2.chat_id = c.id),
   '[]'
-          ) as members
+          ) as members,
+  (SELECT json_build_object('id', pm.id, 'content', pm.content, 'created_at', pm.created_at, 'sender_id', pm.sender_id, 'sender_username', pu.username, 'message_type', pm.message_type)
+         FROM messages pm
+         JOIN users pu ON pm.sender_id = pu.id
+         WHERE pm.id = c.pinned_message_id) as pinned_message
         FROM chats c 
         LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $2
         WHERE c.id = $1`,
@@ -558,8 +612,8 @@ AND(SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2`,
     }
 
     const chatResult = await pool.query(
-      'INSERT INTO chats (is_group, created_by) VALUES (false, $1) RETURNING *',
-      [req.user.id]
+      'INSERT INTO chats (is_group, chat_type, created_by) VALUES (false, $1, $2) RETURNING *',
+      ['direct', req.user.id]
     );
     const chat = chatResult.rows[0];
 
@@ -575,7 +629,11 @@ AND(SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2`,
            JOIN users u ON cm2.user_id = u.id 
            WHERE cm2.chat_id = c.id),
   '[]'
-        ) as members
+        ) as members,
+  (SELECT json_build_object('id', pm.id, 'content', pm.content, 'created_at', pm.created_at, 'sender_id', pm.sender_id, 'sender_username', pu.username, 'message_type', pm.message_type)
+         FROM messages pm
+         JOIN users pu ON pm.sender_id = pu.id
+         WHERE pm.id = c.pinned_message_id) as pinned_message
       FROM chats c 
       LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $2
       WHERE c.id = $1`,
@@ -658,12 +716,18 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
 
   try {
     const memberCheck = await pool.query(
-      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
       [chatId, req.user.id]
     );
 
     if (memberCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+    const role = memberCheck.rows[0].role;
+    const chatTypeResult = await pool.query('SELECT chat_type FROM chats WHERE id = $1', [chatId]);
+    const chatType = chatTypeResult.rows[0]?.chat_type || 'direct';
+    if (chatType === 'channel' && !['admin', 'owner'].includes(role)) {
+      return res.status(403).json({ error: 'Only admins can post in this channel' });
     }
 
     let query = `
@@ -673,6 +737,10 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
         WHEN rm.id IS NULL THEN NULL
         ELSE json_build_object('id', rm.id, 'content', rm.content, 'sender_id', rm.sender_id, 'sender_username', ru.username)
       END as reply,
+      CASE
+        WHEN m.forwarded_from_message_id IS NULL THEN NULL
+        ELSE json_build_object('message_id', m.forwarded_from_message_id, 'chat_id', m.forwarded_from_chat_id, 'chat_name', fc.name, 'sender_id', m.forwarded_from_user_id, 'sender_username', fu.username)
+      END as forwarded_from,
       COALESCE(
         (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru.username))
            FROM reactions r
@@ -685,6 +753,8 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       LEFT JOIN users u ON m.sender_id = u.id
       LEFT JOIN messages rm ON m.reply_to = rm.id
       LEFT JOIN users ru ON rm.sender_id = ru.id
+      LEFT JOIN users fu ON m.forwarded_from_user_id = fu.id
+      LEFT JOIN chats fc ON m.forwarded_from_chat_id = fc.id
       WHERE m.chat_id = $2 AND m.deleted_at IS NULL
       AND NOT EXISTS (
         SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
@@ -789,6 +859,262 @@ app.get('/api/chats/:id/messages/search', authenticateToken, async (req, res) =>
   }
 });
 
+app.get('/api/chats/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const memberCheck = await pool.query(
+      'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    const fullChat = await pool.query(
+      `SELECT c.*,
+        cm.role,
+        COALESCE(
+          (SELECT json_agg(json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar, 'is_online', u.is_online, 'last_read_at', cm2.last_read_at))
+           FROM chat_members cm2 
+           JOIN users u ON cm2.user_id = u.id 
+           WHERE cm2.chat_id = c.id),
+          '[]'
+        ) as members,
+        (SELECT json_build_object('id', pm.id, 'content', pm.content, 'created_at', pm.created_at, 'sender_id', pm.sender_id, 'sender_username', pu.username, 'message_type', pm.message_type)
+         FROM messages pm
+         JOIN users pu ON pm.sender_id = pu.id
+         WHERE pm.id = c.pinned_message_id) as pinned_message
+      FROM chats c 
+      LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $2
+      WHERE c.id = $1`,
+      [id, req.user.id]
+    );
+    res.json(fullChat.rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/messages/:id/forward', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { chatId } = req.body;
+  if (!chatId) return res.status(400).json({ error: 'chatId is required' });
+
+  try {
+    const memberCheck = await pool.query(
+      'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+    const role = memberCheck.rows[0].role;
+    const chatTypeResult = await pool.query('SELECT chat_type FROM chats WHERE id = $1', [chatId]);
+    const chatType = chatTypeResult.rows[0]?.chat_type || 'direct';
+    if (chatType === 'channel' && !['admin', 'owner'].includes(role)) {
+      return res.status(403).json({ error: 'Only admins can post in this channel' });
+    }
+
+    const originalResult = await pool.query(
+      'SELECT * FROM messages WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+    if (originalResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    const original = originalResult.rows[0];
+
+    const originMemberCheck = await pool.query(
+      'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [original.chat_id, req.user.id]
+    );
+    if (originMemberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not allowed to forward this message' });
+    }
+
+    const insertResult = await pool.query(
+      'INSERT INTO messages (chat_id, sender_id, content, message_type, file_url, file_name, file_size, forwarded_from_message_id, forwarded_from_user_id, forwarded_from_chat_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
+      [
+        chatId,
+        req.user.id,
+        original.content,
+        original.message_type,
+        original.file_url,
+        original.file_name,
+        original.file_size,
+        original.id,
+        original.sender_id,
+        original.chat_id,
+      ]
+    );
+
+    await pool.query('UPDATE chats SET updated_at = NOW() WHERE id = $1', [chatId]);
+
+    const message = await getMessageWithMeta(insertResult.rows[0].id, req.user.id);
+    broadcastToChat(chatId, { type: 'new_message', payload: message });
+    res.json(message);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/chats/:id/pin', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { messageId } = req.body;
+  try {
+    const memberCheck = await pool.query(
+      'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+    const role = memberCheck.rows[0].role;
+    const chatTypeResult = await pool.query('SELECT chat_type FROM chats WHERE id = $1', [id]);
+    const chatType = chatTypeResult.rows[0]?.chat_type || 'direct';
+    if (chatType !== 'direct' && !['admin', 'owner'].includes(role)) {
+      return res.status(403).json({ error: 'Not authorized to pin' });
+    }
+
+    if (messageId) {
+      const msgCheck = await pool.query('SELECT chat_id FROM messages WHERE id = $1', [messageId]);
+      if (msgCheck.rows.length === 0 || msgCheck.rows[0].chat_id !== id) {
+        return res.status(400).json({ error: 'Invalid message to pin' });
+      }
+    }
+
+    await pool.query('UPDATE chats SET pinned_message_id = $1 WHERE id = $2', [messageId || null, id]);
+    const pinnedMessage = messageId ? await getMessageWithMeta(messageId, req.user.id) : null;
+    broadcastToChat(id, { type: 'chat_pinned', payload: { chatId: id, pinnedMessage } });
+    res.json({ success: true, pinnedMessage });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/messages/:id/context', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const limitParam = parseInt(req.query.limit || '20');
+  const limit = Number.isFinite(limitParam) ? limitParam : 20;
+  try {
+    const msgResult = await pool.query('SELECT chat_id, created_at FROM messages WHERE id = $1', [id]);
+    if (msgResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+    const { chat_id: chatId, created_at } = msgResult.rows[0];
+
+    const memberCheck = await pool.query('SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2', [chatId, req.user.id]);
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this chat' });
+
+    const half = Math.floor(limit / 2);
+    const beforeQuery = `
+      SELECT m.*,
+      json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+      CASE
+        WHEN rm.id IS NULL THEN NULL
+        ELSE json_build_object('id', rm.id, 'content', rm.content, 'sender_id', rm.sender_id, 'sender_username', ru.username)
+      END as reply,
+      CASE
+        WHEN m.forwarded_from_message_id IS NULL THEN NULL
+        ELSE json_build_object('message_id', m.forwarded_from_message_id, 'chat_id', m.forwarded_from_chat_id, 'chat_name', fc.name, 'sender_id', m.forwarded_from_user_id, 'sender_username', fu.username)
+      END as forwarded_from,
+      COALESCE(
+        (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru2.username))
+           FROM reactions r
+           JOIN users ru2 ON r.user_id = ru2.id
+           WHERE r.message_id = m.id),
+      '[]'
+    ) as reactions,
+      EXISTS(SELECT 1 FROM saved_messages sm WHERE sm.message_id = m.id AND sm.user_id = $1) as is_saved
+      FROM messages m
+      LEFT JOIN users u ON m.sender_id = u.id
+      LEFT JOIN messages rm ON m.reply_to = rm.id
+      LEFT JOIN users ru ON rm.sender_id = ru.id
+      LEFT JOIN users fu ON m.forwarded_from_user_id = fu.id
+      LEFT JOIN chats fc ON m.forwarded_from_chat_id = fc.id
+      WHERE m.chat_id = $2 AND m.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+      )
+      AND m.created_at <= $3
+      ORDER BY m.created_at DESC
+      LIMIT $4
+    `;
+    const afterQuery = `
+      SELECT m.*,
+      json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender,
+      CASE
+        WHEN rm.id IS NULL THEN NULL
+        ELSE json_build_object('id', rm.id, 'content', rm.content, 'sender_id', rm.sender_id, 'sender_username', ru.username)
+      END as reply,
+      CASE
+        WHEN m.forwarded_from_message_id IS NULL THEN NULL
+        ELSE json_build_object('message_id', m.forwarded_from_message_id, 'chat_id', m.forwarded_from_chat_id, 'chat_name', fc.name, 'sender_id', m.forwarded_from_user_id, 'sender_username', fu.username)
+      END as forwarded_from,
+      COALESCE(
+        (SELECT json_agg(json_build_object('emoji', r.emoji, 'user_id', r.user_id, 'username', ru2.username))
+           FROM reactions r
+           JOIN users ru2 ON r.user_id = ru2.id
+           WHERE r.message_id = m.id),
+      '[]'
+    ) as reactions,
+      EXISTS(SELECT 1 FROM saved_messages sm WHERE sm.message_id = m.id AND sm.user_id = $1) as is_saved
+      FROM messages m
+      LEFT JOIN users u ON m.sender_id = u.id
+      LEFT JOIN messages rm ON m.reply_to = rm.id
+      LEFT JOIN users ru ON rm.sender_id = ru.id
+      LEFT JOIN users fu ON m.forwarded_from_user_id = fu.id
+      LEFT JOIN chats fc ON m.forwarded_from_chat_id = fc.id
+      WHERE m.chat_id = $2 AND m.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+      )
+      AND m.created_at > $3
+      ORDER BY m.created_at ASC
+      LIMIT $4
+    `;
+
+    const before = await pool.query(beforeQuery, [req.user.id, chatId, created_at, half + 1]);
+    const after = await pool.query(afterQuery, [req.user.id, chatId, created_at, half]);
+
+    const messages = [...before.rows.reverse(), ...after.rows];
+    res.json({ chatId, targetId: id, messages });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/search/messages', authenticateToken, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json([]);
+  try {
+    const result = await pool.query(
+      `SELECT m.*,
+        c.name as chat_name,
+        c.chat_type,
+        json_build_object('id', u.id, 'username', u.username, 'avatar', u.avatar) as sender
+      FROM messages m
+      JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
+      JOIN users u ON u.id = m.sender_id
+      JOIN chats c ON c.id = m.chat_id
+      WHERE m.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM message_deletes md WHERE md.message_id = m.id AND md.user_id = $1
+        )
+        AND (m.content ILIKE $2 OR u.username ILIKE $2 OR c.name ILIKE $2)
+      ORDER BY m.created_at DESC
+      LIMIT 50`,
+      [req.user.id, `%${q}%`]
+    );
+    res.json(result.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.post('/api/chats/:chatId/read', authenticateToken, async (req, res) => {
   const { chatId } = req.params;
   try {
@@ -880,6 +1206,7 @@ app.delete('/api/messages/:id', authenticateToken, async (req, res) => {
     }
 
     await pool.query('UPDATE messages SET deleted_at = NOW() WHERE id = $1', [id]);
+    await pool.query('UPDATE chats SET pinned_message_id = NULL WHERE pinned_message_id = $1', [id]);
     broadcastToChat(chatId, { type: 'message_deleted', payload: { chatId, messageId: id, senderId: req.user.id } }, req.user.id);
     res.json({ success: true });
   } catch (e) {

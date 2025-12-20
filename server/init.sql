@@ -16,8 +16,10 @@ CREATE TABLE IF NOT EXISTS chats (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(100),
   is_group BOOLEAN DEFAULT false,
+  chat_type VARCHAR(20) DEFAULT 'direct', -- direct, group, channel
   avatar TEXT,
   description TEXT,
+  pinned_message_id UUID,
   created_by UUID REFERENCES users(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -45,6 +47,9 @@ CREATE TABLE IF NOT EXISTS messages (
   deleted_at TIMESTAMP WITH TIME ZONE,
   edited_at TIMESTAMP WITH TIME ZONE,
   reply_to UUID REFERENCES messages(id) ON DELETE SET NULL,
+  forwarded_from_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+  forwarded_from_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  forwarded_from_chat_id UUID REFERENCES chats(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -104,3 +109,9 @@ CREATE TABLE IF NOT EXISTS message_deletes (
 ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to UUID REFERENCES messages(id) ON DELETE SET NULL;
+ALTER TABLE chats ADD COLUMN IF NOT EXISTS chat_type VARCHAR(20) DEFAULT 'direct';
+ALTER TABLE chats ADD COLUMN IF NOT EXISTS pinned_message_id UUID;
+UPDATE chats SET chat_type = CASE WHEN is_group THEN 'group' ELSE 'direct' END WHERE chat_type IS NULL;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded_from_message_id UUID;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded_from_user_id UUID;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded_from_chat_id UUID;

@@ -1,4 +1,4 @@
-import { Phone, Video, MoreHorizontal, Smile, Paperclip, Send, Mic, Pause, Play, AtSign, Loader2, Copy, Square, Trash2, Pencil, X, Bookmark, CornerUpLeft, ArrowLeft, Check, CheckCheck } from 'lucide-react';
+import { Phone, Video, MoreHorizontal, Smile, Paperclip, Send, Mic, Pause, Play, AtSign, Loader2, Copy, Square, Trash2, Pencil, X, Bookmark, CornerUpLeft, ArrowLeft, Check, CheckCheck, Forward } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useMessenger } from '@/context/MessengerContext';
 import { useAuth } from '@/context/AuthContext';
@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { AvatarImage } from '@/components/AvatarImage';
 
@@ -20,6 +21,7 @@ interface MessageBubbleProps {
     edited_at?: string | null;
     reply_to?: string | null;
     reply?: { id: string; content: string; sender_id: string; sender_username: string } | null;
+    forwarded_from?: { message_id: string; chat_id: string; chat_name: string | null; sender_id: string; sender_username: string | null } | null;
     sender?: { id: string; username: string; avatar: string | null };
     reactions?: { emoji: string; user_id: string; username: string }[];
     is_saved?: boolean;
@@ -29,10 +31,13 @@ interface MessageBubbleProps {
   isOwn: boolean;
   canDeleteForAll: boolean;
   readStatus?: string | null;
+  isPinned?: boolean;
   onEdit: (messageId: string, content: string) => void;
   onDeleteForMe: (messageId: string) => void;
   onDeleteForAll: (messageId: string) => void;
   onReply: (messageId: string, content: string, senderName: string) => void;
+  onForward: (messageId: string) => void;
+  onTogglePin: (messageId: string, isPinned: boolean) => void;
 }
 
 const formatDuration = (seconds: number) => {
@@ -98,7 +103,7 @@ const AudioMessage = ({ src }: { src: string }) => {
   );
 };
 
-const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, onDeleteForMe, onDeleteForAll, onReply }: MessageBubbleProps) => {
+const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, isPinned, onEdit, onDeleteForMe, onDeleteForAll, onReply, onForward, onTogglePin }: MessageBubbleProps) => {
   const { addReaction, removeReaction, saveMessage, unsaveMessage } = useMessenger();
   const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const senderName = message.sender?.username || 'Unknown';
@@ -146,7 +151,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
     if (message.message_type === 'audio') {
       return <AudioMessage src={message.file_url || message.content} />;
     }
-    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-words">{message.content}</p>;
+    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-words max-w-full overflow-hidden">{message.content}</p>;
   };
 
   const handleCopy = () => {
@@ -172,10 +177,13 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className={cn(
-          'flex mb-3 group/message',
-          isOwn ? 'justify-end' : 'justify-start'
-        )}>
+        <div
+          id={`message-${message.id}`}
+          className={cn(
+            'flex mb-3 group/message',
+            isOwn ? 'justify-end' : 'justify-start'
+          )}
+        >
           <div className={cn(
             'flex gap-3 max-w-full',
             isOwn ? 'flex-row-reverse items-end' : 'flex-row items-end'
@@ -209,6 +217,11 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
                 isOwn ? 'message-bubble-mine' : 'message-bubble-other',
                 message.message_type === 'image' && 'p-1 bg-transparent border-none'
               )}>
+                {message.forwarded_from && (
+                  <div className="mb-2 text-[10px] text-white/50 uppercase tracking-[0.15em]">
+                    Forwarded from {message.forwarded_from.sender_username || 'Unknown'}
+                  </div>
+                )}
                 {message.reply && (
                   <div className="mb-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
                     <div className="text-[10px] text-white/50">
@@ -246,7 +259,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
 
                 <div className={cn(
                   'absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-all duration-200 flex gap-2',
-                  isOwn ? '-left-28 flex-row-reverse' : '-right-28'
+                  isOwn ? '-left-40 flex-row-reverse' : '-right-40'
                 )}>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -306,6 +319,14 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
           <Bookmark size={14} className="mr-2" />
           {message.is_saved ? 'Unsave' : 'Save'}
         </ContextMenuItem>
+        <ContextMenuItem onClick={() => onForward(message.id)} className="cursor-pointer text-white/80">
+          <Forward size={14} className="mr-2" />
+          Forward
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onTogglePin(message.id, !!isPinned)} className="cursor-pointer text-white/80">
+          <Bookmark size={14} className="mr-2" />
+          {isPinned ? 'Unpin' : 'Pin'}
+        </ContextMenuItem>
         {isEditable && (
           <ContextMenuItem
             onClick={() => onEdit(message.id, message.content)}
@@ -360,9 +381,13 @@ export const ChatArea = () => {
   const { user } = useAuth();
   const {
     activeChat,
+    chats,
     messages,
     isLoadingMessages,
     sendMessage,
+    forwardMessage,
+    pinMessage,
+    openMessageContext,
     getChatDisplayName,
     getChatAvatar,
     getOtherUser,
@@ -392,6 +417,10 @@ export const ChatArea = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
+  const [isForwardOpen, setIsForwardOpen] = useState(false);
+  const [forwardQuery, setForwardQuery] = useState('');
+  const [forwardMessageId, setForwardMessageId] = useState<string | null>(null);
+  const [isForwarding, setIsForwarding] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -431,6 +460,10 @@ export const ChatArea = () => {
 
   const handleSend = async () => {
     if (!messageText.trim() || isSending) return;
+    if (activeChat?.chat_type === 'channel' && !['admin', 'owner'].includes(activeChat?.role || '')) {
+      toast.error('Only admins can post in channels');
+      return;
+    }
     setIsSending(true);
     try {
       if (editingMessage) {
@@ -450,6 +483,21 @@ export const ChatArea = () => {
       console.error(e);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleForward = (messageId: string) => {
+    setForwardMessageId(messageId);
+    setIsForwardOpen(true);
+  };
+
+  const handleTogglePin = async (messageId: string, isPinned: boolean) => {
+    if (!activeChat) return;
+    try {
+      await pinMessage(activeChat.id, isPinned ? null : messageId);
+      toast.success(isPinned ? 'Message unpinned' : 'Message pinned');
+    } catch (e) {
+      toast.error('Failed to update pin');
     }
   };
 
@@ -506,6 +554,11 @@ export const ChatArea = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeChat) return;
+    if (activeChat.chat_type === 'channel' && !['admin', 'owner'].includes(activeChat?.role || '')) {
+      toast.error('Only admins can post in channels');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     try {
       const { url } = await api.uploadFile(file);
@@ -523,6 +576,10 @@ export const ChatArea = () => {
   };
 
   const startRecording = async () => {
+    if (activeChat?.chat_type === 'channel' && !['admin', 'owner'].includes(activeChat?.role || '')) {
+      toast.error('Only admins can post in channels');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -596,6 +653,9 @@ export const ChatArea = () => {
   const otherUser = getOtherUser(activeChat);
   const isOnline = activeChat.is_group ? false : otherUser?.is_online || false;
   const onlineMembers = activeChat.members?.filter((m) => m.is_online).length || 0;
+  const isChannel = activeChat.chat_type === 'channel';
+  const canPost = !isChannel || ['admin', 'owner'].includes(activeChat.role || '');
+  const canPin = activeChat.chat_type === 'direct' || ['admin', 'owner'].includes(activeChat.role || '');
   const lastOwnMessageId = (() => {
     if (!user) return null;
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -647,8 +707,18 @@ export const ChatArea = () => {
     }
   });
 
+  const pinnedPreview = (() => {
+    const pinned = activeChat.pinned_message;
+    if (!pinned) return '';
+    if (pinned.message_type === 'image') return 'Photo';
+    if (pinned.message_type === 'video') return 'Video';
+    if (pinned.message_type === 'audio') return 'Voice message';
+    if (pinned.message_type === 'file') return 'File';
+    return pinned.content || 'Message';
+  })();
+
   const chatTypingUsers = typingUsers.get(activeChat.id) || [];
-  const canDeleteForAll = activeChat.role === 'admin';
+  const canDeleteForAll = ['admin', 'owner'].includes(activeChat.role || '');
 
   return (
     <div className="flex-1 flex flex-col messenger-chat">
@@ -745,6 +815,8 @@ export const ChatArea = () => {
                       ? `${activeChat.members.find(m => m.id === chatTypingUsers[0])?.username || 'Someone'} and ${activeChat.members.find(m => m.id === chatTypingUsers[1])?.username || 'someone'} are typing...`
                       : 'Several people are typing...'}
                 </span>
+              ) : activeChat.chat_type === 'channel' ? (
+                <span className="text-white/40">Channel {'\u2022'} {activeChat.members?.length || 0} Subscribers</span>
               ) : activeChat.is_group ? (
                 <span className="text-white/40">{activeChat.members?.length || 0} Members {'\u2022'} {onlineMembers} Online</span>
               ) : isOnline ? (
@@ -795,16 +867,16 @@ export const ChatArea = () => {
                 <div className="h-px bg-white/5 my-1" />
                 <button
                   onClick={() => deleteMessages(activeChat.id)}
-                  disabled={activeChat.role !== 'admin'}
+                  disabled={!['admin', 'owner'].includes(activeChat.role || '')}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-xl transition-colors",
-                    activeChat.role === 'admin'
+                    ['admin', 'owner'].includes(activeChat.role || '')
                       ? "hover:bg-white/5 text-red-400"
                       : "opacity-50 cursor-not-allowed text-white/20"
                   )}
                 >
-                  <Square size={16} className={activeChat.role === 'admin' ? "text-red-400/50" : "text-white/20"} />
-                  Clear History {activeChat.role !== 'admin' && '(Admin only)'}
+                  <Square size={16} className={['admin', 'owner'].includes(activeChat.role || '') ? "text-red-400/50" : "text-white/20"} />
+                  Clear History {!['admin', 'owner'].includes(activeChat.role || '') && '(Admin only)'}
                 </button>
               </div>
             </PopoverContent>
@@ -813,6 +885,32 @@ export const ChatArea = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 md:px-8 2xl:px-12 py-5 md:py-6 messenger-scrollbar relative z-10 scroll-smooth">
+        {activeChat.pinned_message && (
+          <div className="sticky top-0 z-20 mb-4">
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md px-4 py-2">
+              <button
+                onClick={() => openMessageContext(activeChat.pinned_message!.id)}
+                className="flex items-center gap-3 text-left text-white/80 hover:text-white transition-colors"
+              >
+                <Bookmark size={14} className="text-primary" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">Pinned</span>
+                  <span className="text-xs font-medium truncate max-w-[320px] md:max-w-[480px]">
+                    {pinnedPreview}
+                  </span>
+                </div>
+              </button>
+              {canPin && (
+                <button
+                  onClick={() => handleTogglePin(activeChat.pinned_message!.id, true)}
+                  className="text-[11px] text-white/40 hover:text-white transition-colors"
+                >
+                  Unpin
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {isLoadingMessages ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-white/20">
             <Loader2 className="animate-spin" size={32} />
@@ -841,10 +939,13 @@ export const ChatArea = () => {
                   isOwn={msg.sender_id === user?.id}
                   canDeleteForAll={canDeleteForAll}
                   readStatus={getReadStatus(msg)}
+                  isPinned={activeChat.pinned_message?.id === msg.id}
                   onEdit={startEditMessage}
                   onDeleteForMe={deleteMessageForMe}
                   onDeleteForAll={deleteMessage}
                   onReply={startReplyMessage}
+                  onForward={handleForward}
+                  onTogglePin={handleTogglePin}
                 />
               ))}
             </div>
@@ -912,22 +1013,32 @@ export const ChatArea = () => {
             }}
             onKeyPress={handleKeyPress}
             onBlur={() => activeChat && sendStopTyping(activeChat.id)}
-            placeholder={isRecording ? 'Listening...' : (editingMessage ? 'Edit message...' : 'Type a message...')}
-            disabled={isRecording}
-            className="flex-1 bg-transparent border-0 text-[15px] font-medium text-white placeholder:text-white/20 focus:outline-none px-2"
+            placeholder={
+              !canPost
+                ? 'Only admins can post in channels'
+                : isRecording
+                  ? 'Listening...'
+                  : (editingMessage ? 'Edit message...' : 'Type a message...')
+            }
+            disabled={isRecording || !canPost}
+            className="flex-1 bg-transparent border-0 text-[15px] font-medium text-white placeholder:text-white/20 focus:outline-none px-2 disabled:opacity-60"
           />
 
           <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
 
-          <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-white/30 hover:text-white transition-all hover:bg-white/5 rounded-full">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!canPost}
+            className="p-2.5 text-white/30 hover:text-white transition-all hover:bg-white/5 rounded-full disabled:opacity-40 disabled:cursor-not-allowed"
+          >
             <Paperclip size={22} />
           </button>
 
           {messageText.trim() ? (
             <button
               onClick={handleSend}
-              disabled={isSending}
-              className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-white transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95"
+              disabled={isSending || !canPost}
+              className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-white transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
             >
               {isSending ? (
                 <Loader2 size={20} className="animate-spin" />
@@ -938,8 +1049,9 @@ export const ChatArea = () => {
           ) : (
             <button
               onClick={isRecording ? stopRecording : startRecording}
+              disabled={!canPost}
               className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center text-white transition-all active:scale-95",
+                "w-11 h-11 rounded-full flex items-center justify-center text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed",
                 isRecording ? "bg-red-500 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]" : "bg-primary hover:scale-105"
               )}
             >
@@ -948,6 +1060,79 @@ export const ChatArea = () => {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={isForwardOpen}
+        onOpenChange={(open) => {
+          setIsForwardOpen(open);
+          if (!open) {
+            setForwardMessageId(null);
+            setForwardQuery('');
+          }
+        }}
+      >
+        <DialogContent className="messenger-panel border-white/10">
+          <DialogHeader>
+            <DialogTitle>Forward message</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <input
+              type="text"
+              value={forwardQuery}
+              onChange={(e) => setForwardQuery(e.target.value)}
+              placeholder="Search chats..."
+              className="w-full messenger-input rounded-2xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all text-white"
+            />
+            <div className="space-y-2 max-h-72 overflow-y-auto messenger-scrollbar">
+              {chats
+                .filter((chat) => {
+                  const name = getChatDisplayName(chat);
+                  return name.toLowerCase().includes(forwardQuery.toLowerCase());
+                })
+                .map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={async () => {
+                      if (!forwardMessageId) return;
+                      setIsForwarding(true);
+                      try {
+                        await forwardMessage(forwardMessageId, chat.id);
+                        toast.success('Message forwarded');
+                        setIsForwardOpen(false);
+                        setForwardMessageId(null);
+                        setForwardQuery('');
+                      } catch (e) {
+                        toast.error('Failed to forward');
+                      } finally {
+                        setIsForwarding(false);
+                      }
+                    }}
+                    disabled={isForwarding}
+                    className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 text-left disabled:opacity-60"
+                  >
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                      <AvatarImage
+                        src={getChatAvatar(chat)}
+                        alt={getChatDisplayName(chat)}
+                        className="w-full h-full"
+                        fallback={<span className="text-white font-semibold">{getChatDisplayName(chat).charAt(0).toUpperCase()}</span>}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-white truncate">{getChatDisplayName(chat)}</p>
+                      <p className="text-xs text-white/40 truncate">
+                        {chat.chat_type === 'channel' ? 'Channel' : chat.is_group ? 'Group' : 'Direct chat'}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              {!isForwarding && chats.length === 0 && (
+                <p className="text-center text-sm text-white/40 py-6">No chats available</p>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

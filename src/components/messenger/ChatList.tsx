@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, Users, MessageCircle, Loader2, Phone, Video, UserPlus } from 'lucide-react';
+import { Search, Plus, MessageCircle, Loader2, Phone, Video, Megaphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMessenger } from '@/context/MessengerContext';
 import { useAuth } from '@/context/AuthContext';
@@ -10,13 +10,14 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { AvatarImage } from '@/components/AvatarImage';
 
-type ChatTab = 'all' | 'groups' | 'contacts';
+type ChatTab = 'all' | 'groups' | 'channels' | 'contacts';
 
 interface ChatItemProps {
   chat: {
     id: string;
     name: string | null;
     is_group: boolean;
+    chat_type?: 'direct' | 'group' | 'channel';
     avatar: string | null;
     members: { id: string; username: string; avatar: string | null; is_online: boolean }[];
     last_message: { content: string; created_at: string; message_type?: string } | null;
@@ -99,6 +100,7 @@ export const ChatList = () => {
     setSearchQuery,
     createDirectChat,
     createGroupChat,
+    createChannelChat,
     getChatDisplayName,
     getChatAvatar,
     getOtherUser,
@@ -109,16 +111,20 @@ export const ChatList = () => {
 
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
+  const [isNewChannelOpen, setIsNewChannelOpen] = useState(false);
   const [isNewCallOpen, setIsNewCallOpen] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ id: string; username: string; avatar: string | null; is_online: boolean }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [channelName, setChannelName] = useState('');
+  const [channelMembers, setChannelMembers] = useState<string[]>([]);
 
   const tabs: { key: ChatTab; label: string }[] = [
     { key: 'all', label: 'All Chats' },
     { key: 'groups', label: 'Groups' },
+    { key: 'channels', label: 'Channels' },
     { key: 'contacts', label: 'Contacts' },
   ];
 
@@ -126,8 +132,9 @@ export const ChatList = () => {
     const name = getChatDisplayName(chat);
     const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
 
-    if (activeChatTab === 'groups') return chat.is_group && matchesSearch;
-    if (activeChatTab === 'contacts') return !chat.is_group && matchesSearch;
+    if (activeChatTab === 'groups') return (chat.chat_type === 'group' || (chat.is_group && chat.chat_type !== 'channel')) && matchesSearch;
+    if (activeChatTab === 'channels') return chat.chat_type === 'channel' && matchesSearch;
+    if (activeChatTab === 'contacts') return (chat.chat_type ? chat.chat_type === 'direct' : !chat.is_group) && matchesSearch;
     return matchesSearch;
   });
 
@@ -188,14 +195,35 @@ export const ChatList = () => {
     }
   };
 
+  const handleCreateChannel = async () => {
+    if (!channelName.trim()) return;
+    try {
+      const chat = await createChannelChat(channelName, channelMembers);
+      setActiveChat(chat);
+      setIsNewChannelOpen(false);
+      setChannelName('');
+      setChannelMembers([]);
+      setUserSearchQuery('');
+      setSearchResults([]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const toggleMember = (userId: string) => {
     setSelectedMembers(prev =>
       prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
     );
   };
 
+  const toggleChannelMember = (userId: string) => {
+    setChannelMembers(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
   const getIsOnline = (chat: typeof chats[0]) => {
-    if (chat.is_group) return false;
+    if (chat.is_group || chat.chat_type === 'channel') return false;
     const other = getOtherUser(chat);
     return other?.is_online || false;
   };
@@ -331,6 +359,66 @@ export const ChatList = () => {
                   </div>
                   <Button onClick={handleCreateGroup} className="w-full" disabled={!groupName.trim() || selectedMembers.length === 0}>
                     Create Group
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isNewChannelOpen} onOpenChange={setIsNewChannelOpen}>
+              <DialogTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-[#6b7280] hover:text-white">
+                  <Megaphone size={16} />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="messenger-panel border-white/10">
+                <DialogHeader>
+                  <DialogTitle>New Channel</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="Channel name"
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                    className="messenger-input border-white/10"
+                  />
+                  <Input
+                    placeholder="Search users to add (optional)..."
+                    value={userSearchQuery}
+                    onChange={(e) => {
+                      setUserSearchQuery(e.target.value);
+                      searchUsers(e.target.value);
+                    }}
+                    className="messenger-input border-white/10"
+                  />
+                  {channelMembers.length > 0 && (
+                    <p className="text-sm text-[#6b7280]">
+                      {channelMembers.length} member(s) selected
+                    </p>
+                  )}
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {searchResults.map((u) => (
+                      <div
+                        key={u.id}
+                        onClick={() => toggleChannelMember(u.id)}
+                        className={cn(
+                          'flex items-center gap-3 p-2 rounded-xl cursor-pointer',
+                          channelMembers.includes(u.id) ? 'bg-primary/20' : 'hover:bg-white/5'
+                        )}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                          <AvatarImage
+                            src={u.avatar}
+                            alt={u.username}
+                            className="w-full h-full rounded-full"
+                            fallback={<span className="text-white text-sm">{u.username.charAt(0).toUpperCase()}</span>}
+                          />
+                        </div>
+                        <span className="text-sm">{u.username}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button onClick={handleCreateChannel} className="w-full" disabled={!channelName.trim()}>
+                    Create Channel
                   </Button>
                 </div>
               </DialogContent>
