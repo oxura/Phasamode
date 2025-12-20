@@ -37,7 +37,13 @@ const NavItem = ({ icon, label, isActive, onClick, showLabel = true }: NavItemPr
 export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop' | 'mobile' }) => {
   const { user, logout, updateUser } = useAuth();
   const { createDirectChat, setActiveChat, activeView, setActiveView } = useMessenger();
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light') return false;
+    if (saved === 'dark') return true;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -59,6 +65,7 @@ export const NavigationSidebar = ({ variant = 'desktop' }: { variant?: 'desktop'
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   const handleSearch = async (q: string) => {

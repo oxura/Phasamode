@@ -145,7 +145,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
     if (message.message_type === 'audio') {
       return <AudioMessage src={message.file_url || message.content} />;
     }
-    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-words">{message.content}</p>;
+    return <p className="text-[13px] leading-snug whitespace-pre-wrap break-normal">{message.content}</p>;
   };
 
   const handleCopy = () => {
@@ -176,8 +176,8 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
           isOwn ? 'justify-end' : 'justify-start'
         )}>
           <div className={cn(
-            'flex gap-3 max-w-[80%]',
-            isOwn ? 'flex-row-reverse' : 'flex-row'
+            'flex gap-3 max-w-full',
+            isOwn ? 'flex-row-reverse items-end' : 'flex-row items-end'
           )}>
             {!isOwn && (
               <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 ring-1 ring-white/10 mt-auto">
@@ -190,7 +190,7 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
                 )}
               </div>
             )}
-            <div className="flex flex-col">
+            <div className={cn('flex flex-col', isOwn ? 'items-end' : 'items-start')}>
               <div className={cn(
                 'flex items-center gap-2 mb-1 px-1',
                 isOwn ? 'justify-end' : 'justify-start'
@@ -241,8 +241,8 @@ const MessageBubble = ({ message, isOwn, canDeleteForAll, readStatus, onEdit, on
                 )}
 
                 <div className={cn(
-                  'absolute top-0 opacity-0 group-hover/message:opacity-100 transition-all duration-200 flex gap-1',
-                  isOwn ? '-left-16 flex-row-reverse' : '-right-16'
+                  'absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-all duration-200 flex gap-2',
+                  isOwn ? '-left-20 flex-row-reverse' : '-right-20'
                 )}>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -652,7 +652,7 @@ export const ChatArea = () => {
 
       {/* Call Overlay */}
       {callStatus.isActive && callStatus.chatId === activeChat.id && (
-        <div className="absolute inset-0 z-50 bg-[#0e0e12]/95 backdrop-blur-xl flex flex-col items-center justify-center animate-in fade-in duration-500">
+        <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-xl flex flex-col items-center justify-center animate-in fade-in duration-500">
           {callStatus.isVideo && (
             <div className="absolute inset-0">
               <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
@@ -686,7 +686,7 @@ export const ChatArea = () => {
           <div className="relative z-10 flex flex-col items-center">
             <h2 className="text-3xl font-bold text-white mb-2">{displayName}</h2>
             <p className="text-primary animate-pulse mb-12 text-lg font-medium tracking-wide">
-              {callStatus.isIncoming ? 'INCOMING CALL...' : 'CALLING...'}
+              {callStatus.isIncoming ? 'INCOMING CALL...' : (remoteStream ? 'IN CALL' : 'CALLING...')}
             </p>
 
             <div className="flex items-center gap-12">
@@ -707,7 +707,7 @@ export const ChatArea = () => {
         </div>
       )}
 
-      <div className="flex items-center justify-between px-4 md:px-8 2xl:px-12 py-4 md:py-5 border-b border-white/5 bg-[#0b0b0f]/60 backdrop-blur-xl z-20">
+      <div className="flex items-center justify-between px-4 md:px-8 2xl:px-12 py-4 md:py-5 border-b border-border/60 bg-messenger-bg/80 backdrop-blur-xl z-20">
         <div className="flex items-center gap-3 md:gap-4 group cursor-pointer" onClick={() => setShowChatInfo(true)}>
           {isMobile && (
             <button

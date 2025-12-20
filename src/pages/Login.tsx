@@ -34,10 +34,10 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-messenger-bg relative overflow-hidden">
       {/* Decorative elements */}
-      <div className="absolute top-20 left-10 text-primary/10 text-6xl pointer-events-none animate-pulse">PHASE</div>
-      <div className="absolute top-40 right-20 text-primary/10 text-4xl pointer-events-none animate-pulse delay-700">PHASE</div>
-      <div className="absolute bottom-40 left-20 text-primary/10 text-5xl pointer-events-none animate-pulse delay-1000">PHASE</div>
-      <div className="absolute bottom-20 right-10 text-primary/10 text-3xl pointer-events-none animate-pulse delay-500">PHASE</div>
+      <div className="absolute top-20 left-10 text-primary/10 text-6xl pointer-events-none animate-pulse">ECHO</div>
+      <div className="absolute top-40 right-20 text-primary/10 text-4xl pointer-events-none animate-pulse delay-700">SIGNAL</div>
+      <div className="absolute bottom-40 left-20 text-primary/10 text-5xl pointer-events-none animate-pulse delay-1000">PULSE</div>
+      <div className="absolute bottom-20 right-10 text-primary/10 text-3xl pointer-events-none animate-pulse delay-500">ORBIT</div>
 
       {/* Subtle gradient blob */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl pointer-events-none" />

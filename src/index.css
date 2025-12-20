@@ -4,13 +4,47 @@
 
 @layer base {
   :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 240 10% 3.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 94%;
+    --accent-foreground: 240 10% 3.9%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 1rem;
+
+    --messenger-bg: 210 40% 98%;
+    --messenger-sidebar: 0 0% 100%;
+    --messenger-card: 0 0% 100%;
+    --messenger-card-hover: 210 40% 96%;
+    --messenger-active: 221 83% 53%;
+    --messenger-online: 142 72% 45%;
+    --messenger-bubble-sent: 221 83% 95%;
+    --messenger-bubble-received: 0 0% 100%;
+    --messenger-voice: 221 83% 96%;
+    --messenger-bg-pattern-opacity: 0.04;
+  }
+
+  .dark {
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
     --card: 240 10% 3.9%;
     --card-foreground: 0 0% 98%;
     --popover: 240 10% 4.5%;
     --popover-foreground: 0 0% 98%;
-    --primary: 215 100% 50%; /* Blueish primary like reference */
+    --primary: 215 100% 50%;
     --primary-foreground: 0 0% 100%;
     --secondary: 240 4% 10%;
     --secondary-foreground: 0 0% 98%;
@@ -23,7 +57,17 @@
     --border: 240 4% 16%;
     --input: 240 4% 16%;
     --ring: 215 100% 50%;
-    --radius: 1rem;
+
+    --messenger-bg: 240 8% 6%;
+    --messenger-sidebar: 240 8% 9%;
+    --messenger-card: 240 8% 8%;
+    --messenger-card-hover: 240 8% 12%;
+    --messenger-active: 215 100% 50%;
+    --messenger-online: 142 72% 45%;
+    --messenger-bubble-sent: 215 100% 18%;
+    --messenger-bubble-received: 240 6% 14%;
+    --messenger-voice: 240 6% 14%;
+    --messenger-bg-pattern-opacity: 0.03;
   }
 }
 
@@ -32,9 +76,37 @@
     @apply border-border;
   }
   body {
-    @apply bg-[#0b0b0f] text-foreground antialiased;
+    @apply bg-background text-foreground antialiased;
     min-height: 100vh;
     overflow: hidden;
+  }
+
+  :root:not(.dark) .text-white {
+    color: hsl(var(--foreground));
+  }
+  :root:not(.dark) .text-white\/80 {
+    color: hsl(var(--foreground) / 0.8);
+  }
+  :root:not(.dark) .text-white\/70 {
+    color: hsl(var(--foreground) / 0.7);
+  }
+  :root:not(.dark) .text-white\/60 {
+    color: hsl(var(--foreground) / 0.6);
+  }
+  :root:not(.dark) .text-white\/50 {
+    color: hsl(var(--foreground) / 0.5);
+  }
+  :root:not(.dark) .text-white\/40 {
+    color: hsl(var(--foreground) / 0.4);
+  }
+  :root:not(.dark) .text-white\/30 {
+    color: hsl(var(--foreground) / 0.3);
+  }
+  :root:not(.dark) .text-white\/20 {
+    color: hsl(var(--foreground) / 0.2);
+  }
+  :root:not(.dark) .text-white\/10 {
+    color: hsl(var(--foreground) / 0.1);
   }
 }
 
@@ -43,27 +115,28 @@
 }
 
 .messenger-panel {
-  @apply bg-[#121218]/40 backdrop-blur-3xl border-white/5;
+  @apply bg-messenger-sidebar/70 backdrop-blur-3xl border-border/60;
 }
 
 .messenger-input {
-  @apply bg-white/[0.05] border-white/10 focus:ring-primary/40 text-white placeholder:text-white/20 rounded-full px-6 transition-all;
+  @apply bg-messenger-card border-border/60 focus:ring-primary/40 text-foreground placeholder:text-foreground/40 rounded-full px-6 transition-all;
 }
 
 .messenger-card {
-  @apply bg-white/[0.02] border-white/5 hover:bg-white/[0.04] transition-colors rounded-2xl;
+  @apply bg-messenger-card border-border/50 hover:bg-messenger-card-hover transition-colors rounded-2xl;
 }
 
 .messenger-sidebar {
-  @apply bg-[#0e0e12] border-r border-white/5;
+  @apply bg-messenger-sidebar border-r border-border/50;
 }
 
 .messenger-chat {
-  @apply relative bg-[#0b0b0f] overflow-hidden;
+  @apply relative bg-messenger-bg overflow-hidden;
 }
 
 .messenger-chat-bg {
-  @apply absolute inset-0 opacity-[0.03] pointer-events-none;
+  @apply absolute inset-0 pointer-events-none;
+  opacity: var(--messenger-bg-pattern-opacity);
   background-image: url('/doodle.png');
   background-repeat: repeat;
   background-size: 500px;
@@ -102,13 +175,13 @@
 }
 
 .message-bubble {
-  @apply relative p-3 rounded-xl max-w-[70%] transition-all;
+  @apply relative inline-flex flex-col p-3 rounded-xl max-w-[75%] w-fit transition-all;
 }
 
 .message-bubble-mine {
-  @apply bg-primary/20 border border-primary/20 rounded-tr-none text-white;
+  @apply bg-messenger-bubble-sent border border-primary/20 rounded-tr-none text-foreground;
 }
 
 .message-bubble-other {
-  @apply bg-white/[0.05] border border-white/5 rounded-tl-none text-white/90;
+  @apply bg-messenger-bubble-received border border-border/50 rounded-tl-none text-foreground;
 }

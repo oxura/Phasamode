@@ -44,7 +44,7 @@ const JoinInvite = () => {
 
     if (error) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#0b0b0f] text-white p-4">
+            <div className="min-h-screen flex flex-col items-center justify-center bg-messenger-bg text-foreground p-4">
                 <div className="bg-red-500/10 border border-red-500/20 p-8 rounded-3xl text-center max-w-md w-full backdrop-blur-xl">
                     <h2 className="text-2xl font-bold text-red-400 mb-4">Invite Error</h2>
                     <p className="text-white/60 mb-6">{error}</p>
@@ -60,7 +60,7 @@ const JoinInvite = () => {
     }
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-[#0b0b0f] text-white">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-messenger-bg text-foreground">
             <div className="flex flex-col items-center gap-6 animate-pulse">
                 <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
                     <Loader2 className="w-10 h-10 animate-spin text-primary" />
